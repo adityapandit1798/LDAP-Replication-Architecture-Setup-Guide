@@ -7,6 +7,44 @@ This document provides a **step-by-step guide** to create a production-ready LDA
 - Proper domain: `dc=innspark,dc=in`
 
 ---
+                    +--------------------------------------------------+
+                    |                APPLICATION SERVER                |
+                    |  (Your web app, authentication system, etc.)     |
+                    +--------------------------------------------------+
+                                        |
+                                        | LDAP Requests
+                                        ↓
+                    +--------------------------------------------------+
+                    |                HAProxy LOAD BALANCER             |
+                    |  IP: 192.168.192.162                            |
+                    |  Port 389 → Master (Writes)                     |
+                    |  Port 390 → Replicas (Reads)                    |
+                    +--------------------------------------------------+
+                                        |
+          +-----------------------------+-----------------------------+
+          |                                                           |
+          | (Port 389 - Write Traffic)                                | (Port 390 - Read Traffic)
+          ↓                                                           ↓
++---------------------+                                   +---------------------+
+|   MASTER SERVER     |                                   |   REPLICA SERVERS   |
+|   IP: 192.168.192.157|                                   |                     |
+|   Role: Read/Write  |                                   |  +----------------+ |
+|   Database: Primary |                                   |  | Replica 1      | |
+|                     |                                   |  | IP: 192.168.192.158| |
+|                     |                                   |  | Role: Read-Only | |
+|                     |                                   |  +----------------+ |
+|                     |                                   |          |          |
+|                     |                                   |  +----------------+ |
+|                     |                                   |  | Replica 2      | |
+|                     |                                   |  | IP: 192.168.192.159| |
+|                     |                                   |  | Role: Read-Only | |
++---------------------+                                   |  +----------------+ |
+          ↑                                                           |
+          |                                                           |
+          +------------------- REPLICATION TRAFFIC -------------------+
+                              (Port 389, syncprov → syncrepl)
+
+
 
 ## 🖥️ **VM Requirements**
 
