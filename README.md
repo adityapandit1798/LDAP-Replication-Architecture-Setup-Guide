@@ -7,6 +7,10 @@ This document provides a **step-by-step guide** to create a production-ready LDA
 - Proper domain: `dc=innspark,dc=in`
 
 ---
+```markdown
+# LDAP Architecture Diagram
+
+```
                     +--------------------------------------------------+
                     |                APPLICATION SERVER                |
                     |  (Your web app, authentication system, etc.)     |
@@ -43,7 +47,7 @@ This document provides a **step-by-step guide** to create a production-ready LDA
           |                                                           |
           +------------------- REPLICATION TRAFFIC -------------------+
                               (Port 389, syncprov → syncrepl)
-
+```
 
 
 ## 🖥️ **VM Requirements**
