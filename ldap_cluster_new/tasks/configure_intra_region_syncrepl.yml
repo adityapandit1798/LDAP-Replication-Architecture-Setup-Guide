@@ -1,0 +1,54 @@
+---
+- name: Gather intra-region master peers (excluding self)
+  set_fact:
+    intra_region_peers: >-
+      {{
+        groups['writers']
+        | map('extract', hostvars)
+        | selectattr('region', 'equalto', region)
+        | rejectattr('inventory_hostname', 'equalto', inventory_hostname)
+        | list
+      }}
+  when: is_writer | bool
+
+- name: FAIL if no intra-region peer found
+  assert:
+    that: intra_region_peers | length >= 1
+    fail_msg: "Master {{ inventory_hostname }} has no intra-region peers in {{ region }}"
+  when: is_writer | bool
+
+- name: Configure intra-region syncrepl (dynamic)
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+    dn: olcDatabase={1}mdb,cn=config
+    changetype: modify
+    add: olcSyncrepl
+    {% for peer in intra_region_peers %}
+    olcSyncrepl: rid={{ '%03d' | format(loop.index) }} provider=ldap://{{ peer.ldap_host }}:389 bindmethod=simple binddn="cn=replicator,{{ ldap_suffix }}" credentials={{ ldap_admin_password }} searchbase="{{ ldap_suffix }}" schemachecking=on type=refreshAndPersist retry="60 +"
+    {% endfor %}
+    EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when: result.rc not in [0, 20, 68]
+  changed_when: result.rc == 0
+  when: is_writer | bool
+
+- name: VERIFY – intra-region syncrepl count
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapsearch -Y EXTERNAL -H ldapi:/// -b "olcDatabase={1}mdb,cn=config" olcSyncrepl | grep -c "^olcSyncrepl:"
+  args:
+    executable: /bin/bash
+  register: verify_count
+  changed_when: false
+  when: is_writer | bool
+
+- name: FAIL if no syncrepl configured
+  assert:
+    that: verify_count.stdout | int >= (intra_region_peers | length)
+    fail_msg: "Expected {{ intra_region_peers | length }} intra-region syncrepl entries, got {{ verify_count.stdout }}"
+  when: is_writer | bool

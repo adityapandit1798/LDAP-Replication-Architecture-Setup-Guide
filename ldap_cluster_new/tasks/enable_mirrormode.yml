@@ -1,0 +1,176 @@
+---
+- name: DEBUG – inventory values used for olcServerID
+  debug:
+    msg:
+      host: "{{ inventory_hostname }}"
+      server_id: "{{ server_id }}"
+      peers: >-
+        {{
+          groups['all']
+          | map('extract', hostvars)
+          | selectattr('server_id', 'defined')
+          | map(attribute='inventory_hostname')
+          | list
+        }}
+  when: is_writer | bool
+
+- name: Configure olcServerID correctly from inventory (SAFE)
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+
+    ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+    dn: cn=config
+    changetype: modify
+    replace: olcServerID
+    # Local server identity (must match slapd listener)
+    olcServerID: {{ server_id }} ldap:///
+    {% for h in groups['all'] %}
+    {% if hostvars[h].server_id is defined and hostvars[h].server_id != server_id %}
+    olcServerID: {{ hostvars[h].server_id }} ldap://{{ hostvars[h].ansible_host | default(h) }}
+    {% endif %}
+    {% endfor %}
+    EOF
+  args:
+    executable: /bin/bash
+  register: serverid_result
+  failed_when: serverid_result.rc not in [0, 20]
+  changed_when: serverid_result.rc == 0
+  when: is_writer | bool
+
+- name: DEBUG – olcServerID ldapmodify output
+  debug:
+    msg: "{{ serverid_result.stdout_lines + serverid_result.stderr_lines }}"
+  when: is_writer | bool
+
+- name: Enable MultiProvider (correct for >2 masters)
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+
+    ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+    dn: olcDatabase={1}mdb,cn=config
+    changetype: modify
+    replace: olcMultiProvider
+    olcMultiProvider: TRUE
+    EOF
+  args:
+    executable: /bin/bash
+  register: multiprov_result
+  failed_when: multiprov_result.rc not in [0, 20]
+  changed_when: multiprov_result.rc == 0
+  when: is_writer | bool
+
+- name: Restart slapd
+  become: true
+  systemd:
+    name: slapd
+    state: restarted
+  when: is_writer | bool
+
+- name: Wait for ldapi
+  become: true
+  wait_for:
+    path: /run/slapd/ldapi
+    timeout: 30
+  when: is_writer | bool
+
+- name: VERIFY – olcServerID and MultiProvider
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+
+    echo "=== olcServerID ==="
+    ldapsearch -Y EXTERNAL -H ldapi:/// -b cn=config olcServerID
+
+    echo "=== olcMultiProvider ==="
+    ldapsearch -Y EXTERNAL -H ldapi:/// \
+      -b "olcDatabase={1}mdb,cn=config" olcMultiProvider
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when: is_writer | bool
+
+
+
+
+
+# ---
+# - name: Configure olcServerID correctly per master
+#   become: true
+#   shell: |
+#     export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+
+#     ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+#     dn: cn=config
+#     changetype: modify
+#     replace: olcServerID
+#     {% if inventory_hostname == 'pune-m1' %}
+#     olcServerID: 1 ldap:///
+#     olcServerID: 2 ldap://192.168.192.164
+#     olcServerID: 7 ldap://10.10.10.6
+#     olcServerID: 8 ldap://10.10.10.7
+#     {% elif inventory_hostname == 'pune-m2' %}
+#     olcServerID: 2 ldap:///
+#     olcServerID: 1 ldap://192.168.192.163
+#     olcServerID: 7 ldap://10.10.10.6
+#     olcServerID: 8 ldap://10.10.10.7
+#     {% elif inventory_hostname == 'mumbai-m1' %}
+#     olcServerID: 7 ldap:///
+#     olcServerID: 8 ldap://10.10.10.7
+#     olcServerID: 1 ldap://192.168.192.163
+#     olcServerID: 2 ldap://192.168.192.164
+#     {% elif inventory_hostname == 'mumbai-m2' %}
+#     olcServerID: 8 ldap:///
+#     olcServerID: 7 ldap://10.10.10.6
+#     olcServerID: 1 ldap://192.168.192.163
+#     olcServerID: 2 ldap://192.168.192.164
+#     {% endif %}
+#     EOF
+#   args:
+#     executable: /bin/bash
+#   register: serverid_result
+#   failed_when: serverid_result.rc not in [0, 20]
+#   changed_when: serverid_result.rc == 0
+#   when: is_writer | bool
+
+# - name: Enable MultiProvider (correct for 4 masters)
+#   become: true
+#   shell: |
+#     export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+#     ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+#     dn: olcDatabase={1}mdb,cn=config
+#     changetype: modify
+#     replace: olcMultiProvider
+#     olcMultiProvider: TRUE
+#     EOF
+#   args:
+#     executable: /bin/bash
+#   register: multiprov_result
+#   failed_when: multiprov_result.rc not in [0, 20]
+#   changed_when: multiprov_result.rc == 0
+#   when: is_writer | bool
+
+# - name: Restart slapd
+#   become: true
+#   systemd:
+#     name: slapd
+#     state: restarted
+#   when: is_writer | bool
+
+# - name: Wait for ldapi
+#   become: true
+#   wait_for:
+#     path: /run/slapd/ldapi
+#     timeout: 30
+#   when: is_writer | bool
+
+# - name: VERIFY – slapd is running and MultiProvider enabled
+#   become: true
+#   shell: |
+#     ldapsearch -Y EXTERNAL -H ldapi:/// \
+#       -b "olcDatabase={1}mdb,cn=config" olcMultiProvider
+#   args:
+#     executable: /bin/bash
+#   changed_when: false
+#   when: is_writer | bool

@@ -1,0 +1,14 @@
+---
+# Step 1: Configure LDAP cluster
+- name: Step 1 - Install and configure OpenLDAP
+  hosts: ldap_nodes
+  become: true
+  roles:
+    - ldap_cluster_new
+
+# Step 2: Configure HAProxy
+- name: Step 2 - Install and configure HAProxy
+  hosts: haproxy
+  become: true
+  roles:
+    - ha-proxy-role

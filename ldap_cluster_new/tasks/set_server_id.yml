@@ -1,0 +1,37 @@
+---
+- name: Set olcServerID dynamically
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+    dn: cn=config
+    changetype: modify
+    replace: olcServerID
+    olcServerID: {{ server_id }}
+    EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when: result.rc not in [0, 20]   # 20 = "Type or value exists"
+  changed_when: result.rc == 0
+
+- name: DEBUG – olcServerID set output
+  debug:
+    msg: "Set olcServerID={{ server_id }} on {{ inventory_hostname }}"
+
+- name: VERIFY – olcServerID is correct
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapsearch -Y EXTERNAL -H ldapi:/// -b cn=config olcServerID \
+      | awk '/^olcServerID:/ {print $2}'
+  args:
+    executable: /bin/bash
+  register: verify_result
+  changed_when: false
+
+- name: FAIL if olcServerID mismatch
+  assert:
+    that:
+      - verify_result.stdout | int == server_id | int
+    fail_msg: "olcServerID is {{ verify_result.stdout }}, expected {{ server_id }}"

@@ -1,0 +1,44 @@
+---
+- name: Create replicator user for replication (masters only)
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapadd -x -D "cn=admin,{{ ldap_suffix }}" -w "{{ ldap_admin_password }}" <<'EOF'
+    dn: cn=replicator,{{ ldap_suffix }}
+    objectClass: simpleSecurityObject
+    objectClass: organizationalRole
+    cn: replicator
+    userPassword: {{ ldap_admin_password }}
+    EOF
+  args:
+    executable: /bin/bash
+  register: result
+  # rc=68 = "Entry Already Exists" → safe to ignore
+  failed_when: result.rc not in [0, 68]
+  changed_when: result.rc == 0
+  when: is_writer | bool
+
+- name: DEBUG – replicator user creation result
+  debug:
+    msg: "Replicator user created on {{ inventory_hostname }}"
+  when: is_writer | bool and result.rc == 0
+
+- name: VERIFY – replicator user exists (on masters)
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapsearch -x -D "cn=admin,{{ ldap_suffix }}" -w "{{ ldap_admin_password }}" \
+      -b "{{ ldap_suffix }}" "(cn=replicator)" dn \
+      | grep -q "cn=replicator" && echo "OK" || echo "MISSING"
+  args:
+    executable: /bin/bash
+  register: verify_result
+  changed_when: false
+  when: is_writer | bool
+
+- name: FAIL if replicator user missing on master
+  assert:
+    that:
+      - verify_result.stdout == "OK"
+    fail_msg: "Replicator user not found on master {{ inventory_hostname }}"
+  when: is_writer | bool

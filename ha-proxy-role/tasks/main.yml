@@ -1,0 +1,62 @@
+---
+- name: Ensure slapd is NOT installed on HAProxy nodes
+  become: true
+  apt:
+    name: slapd
+    state: absent
+    purge: true
+  ignore_errors: true
+
+- name: Install HAProxy and LDAP utilities (for testing)
+  become: true
+  apt:
+    name:
+      - haproxy
+      - ldap-utils
+    state: present
+    update_cache: true
+
+- name: Gather local masters and readers for this region
+  set_fact:
+    local_masters: >-
+      {{
+        groups['writers']
+        | map('extract', hostvars)
+        | selectattr('region', 'equalto', region)
+        | list
+      }}
+    local_readers: >-
+      {{
+        groups['readers']
+        | map('extract', hostvars)
+        | selectattr('region', 'equalto', region)
+        | list
+      }}
+  when: "'is_haproxy' in hostvars[inventory_hostname]"
+
+- name: FAIL if not enough LDAP nodes in region
+  assert:
+    that:
+      - local_masters | length == 2
+      - local_readers | length == 4
+    fail_msg: "Region {{ region }} must have exactly 2 masters and 4 readers for HAProxy config."
+  when: "'is_haproxy' in hostvars[inventory_hostname]"
+
+- name: Generate HAProxy configuration from template
+  become: true
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart haproxy
+  when: "'is_haproxy' in hostvars[inventory_hostname]"
+
+- name: Enable and start HAProxy
+  become: true
+  systemd:
+    name: haproxy
+    enabled: true
+    state: started
+  when: "'is_haproxy' in hostvars[inventory_hostname]"

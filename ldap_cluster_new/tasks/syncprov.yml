@@ -1,0 +1,60 @@
+---
+- name: Load syncprov module
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+    dn: cn=module{0},cn=config
+    changetype: modify
+    add: olcModuleLoad
+    olcModuleLoad: syncprov
+    EOF
+  args:
+    executable: /bin/bash
+  register: module_result
+  failed_when: module_result.rc not in [0, 20]   # 20 = "Type or value exists"
+  changed_when: module_result.rc == 0
+
+- name: DEBUG – syncprov module load output
+  debug:
+    msg: "{{ module_result.stderr_lines + module_result.stdout_lines }}"
+
+- name: Create syncprov overlay
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapadd -Y EXTERNAL -H ldapi:/// <<'EOF'
+    dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+    objectClass: olcOverlayConfig
+    objectClass: olcSyncProvConfig
+    olcOverlay: syncprov
+    olcSpCheckpoint: 100 10
+    olcSpSessionlog: 100
+    EOF
+  args:
+    executable: /bin/bash
+  register: overlay_result
+  failed_when: overlay_result.rc not in [0, 68]  # 68 = "Entry already exists"
+  changed_when: overlay_result.rc == 0
+
+- name: DEBUG – syncprov overlay creation output
+  debug:
+    msg: "{{ overlay_result.stderr_lines + overlay_result.stdout_lines }}"
+
+- name: VERIFY – syncprov overlay is present
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapsearch -Y EXTERNAL -H ldapi:/// \
+      -b cn=config -s sub "(olcOverlay=syncprov)" dn \
+      | grep -q "^dn:" && echo "PRESENT" || echo "MISSING"
+  args:
+    executable: /bin/bash
+  register: verify_result
+  changed_when: false
+
+- name: FAIL if syncprov overlay is missing
+  assert:
+    that:
+      - verify_result.stdout == "PRESENT"
+    fail_msg: "syncprov overlay was not created successfully"

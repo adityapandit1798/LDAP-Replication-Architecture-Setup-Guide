@@ -1,0 +1,200 @@
+---
+###############################################################################
+# Configure LDAP READERS (non-mirror nodes)
+# - Unique olcServerID
+# - syncrepl from BOTH local masters
+# - MirrorMode MUST be FALSE
+###############################################################################
+
+- name: Set reader-specific olcServerID
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+    dn: cn=config
+    changetype: modify
+    replace: olcServerID
+    olcServerID: {{ server_id }}
+    EOF
+  args:
+    executable: /bin/bash
+  register: serverid_result
+  failed_when: serverid_result.rc not in [0, 20]
+  changed_when: serverid_result.rc == 0
+  when: is_reader | bool
+
+###############################################################################
+
+- name: Configure reader database suffix and root credentials
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+    dn: olcDatabase={1}mdb,cn=config
+    changetype: modify
+    replace: olcSuffix
+    olcSuffix: {{ ldap_suffix }}
+    -
+    replace: olcRootDN
+    olcRootDN: cn=admin,{{ ldap_suffix }}
+    -
+    replace: olcRootPW
+    olcRootPW: {{ ldap_admin_password }}
+    EOF
+  args:
+    executable: /bin/bash
+  register: db_result
+  failed_when: db_result.rc not in [0, 20]
+  changed_when: db_result.rc == 0
+  when: is_reader | bool
+
+###############################################################################
+
+- name: Remove existing syncrepl configuration on reader (idempotent)
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+    dn: olcDatabase={1}mdb,cn=config
+    changetype: modify
+    delete: olcSyncrepl
+    EOF
+  args:
+    executable: /bin/bash
+  register: clear_syncrepl
+  failed_when: clear_syncrepl.rc not in [0, 16, 20]
+  changed_when: clear_syncrepl.rc == 0
+  when: is_reader | bool
+
+###############################################################################
+# Build syncrepl ONLY if masters exist in this region
+###############################################################################
+
+- name: Build list of local masters for reader region
+  set_fact:
+    local_masters: >-
+      {{
+        groups['writers']
+        | map('extract', hostvars)
+        | selectattr('region', 'equalto', region)
+        | list
+      }}
+  when: is_reader | bool
+
+- name: FAIL if reader has no masters in its region
+  assert:
+    that:
+      - local_masters | length >= 2
+    fail_msg: >
+      Reader {{ inventory_hostname }} has no valid masters in region {{ region }}.
+      At least TWO masters are required for reader syncrepl.
+  when: is_reader | bool
+
+###############################################################################
+
+- name: Configure syncrepl from local masters (safe LDIF)
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+    dn: olcDatabase={1}mdb,cn=config
+    changetype: modify
+    {% for master in local_masters %}
+    add: olcSyncrepl
+    olcSyncrepl: rid={{ '%03d' | format(loop.index) }} provider=ldap://{{ master.ansible_host | default(master.inventory_hostname) }}:389 bindmethod=simple binddn="cn=replicator,{{ ldap_suffix }}" credentials={{ ldap_admin_password }} searchbase="{{ ldap_suffix }}" schemachecking=on type=refreshAndPersist retry="60 +"
+    {% if not loop.last %}
+    -
+    {% endif %}
+    {% endfor %}
+    EOF
+  args:
+    executable: /bin/bash
+  register: syncrepl_result
+  failed_when: syncrepl_result.rc not in [0, 20]
+  changed_when: syncrepl_result.rc == 0
+  when: is_reader | bool
+
+###############################################################################
+
+- name: Ensure MirrorMode is FALSE on readers
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+    dn: olcDatabase={1}mdb,cn=config
+    changetype: modify
+    replace: olcMirrorMode
+    olcMirrorMode: FALSE
+    EOF
+  args:
+    executable: /bin/bash
+  register: mirror_result
+  failed_when: mirror_result.rc not in [0, 20]
+  changed_when: mirror_result.rc == 0
+  when: is_reader | bool
+
+###############################################################################
+# Reinitialize DB (required for first syncrepl)
+###############################################################################
+
+- name: Stop slapd on reader
+  become: true
+  systemd:
+    name: slapd
+    state: stopped
+  when: is_reader | bool
+
+- name: Clear reader database
+  become: true
+  file:
+    path: /var/lib/ldap
+    state: absent
+  when: is_reader | bool
+
+- name: Recreate DB directory
+  become: true
+  file:
+    path: /var/lib/ldap
+    state: directory
+    owner: openldap
+    group: openldap
+    mode: "0700"
+  when: is_reader | bool
+
+- name: Start slapd on reader
+  become: true
+  systemd:
+    name: slapd
+    state: started
+  when: is_reader | bool
+
+- name: Wait for ldapi socket
+  become: true
+  wait_for:
+    path: /run/slapd/ldapi
+    timeout: 30
+  when: is_reader | bool
+
+###############################################################################
+
+- name: VERIFY – syncrepl configured on reader
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapsearch -Y EXTERNAL -H ldapi:/// \
+      -b "olcDatabase={1}mdb,cn=config" olcSyncrepl \
+      | grep -c "^olcSyncrepl:"
+  args:
+    executable: /bin/bash
+  register: syncrepl_count
+  changed_when: false
+  when: is_reader | bool
+
+- name: FAIL if reader syncrepl not correctly configured
+  assert:
+    that:
+      - syncrepl_count.stdout | int >= 2
+    fail_msg: >
+      Reader {{ inventory_hostname }} does not have syncrepl configured
+      from both masters in region {{ region }}.
+  when: is_reader | bool

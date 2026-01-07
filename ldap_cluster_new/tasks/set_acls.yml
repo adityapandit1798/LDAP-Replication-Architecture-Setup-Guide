@@ -1,0 +1,43 @@
+---
+- name: Set replication ACLs on master database (CORRECT LDIF)
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+    dn: olcDatabase={1}mdb,cn=config
+    changetype: modify
+    replace: olcAccess
+    olcAccess: {0}to attrs=userPassword,shadowLastChange by dn="cn=admin,dc=innspark,dc=in" write by anonymous auth by self write by * none
+    olcAccess: {1}to * by dn="cn=replicator,dc=innspark,dc=in" read by dn="cn=admin,dc=innspark,dc=in" write by * read
+    EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when: result.rc not in [0, 20]
+  changed_when: result.rc == 0
+  when: is_writer | bool
+
+- name: DEBUG – ACLs applied on {{ inventory_hostname }}
+  debug:
+    msg: "ACLs set on {{ inventory_hostname }}"
+  when: is_writer | bool and result.rc == 0
+
+- name: VERIFY – ACLs contain replicator and admin
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapsearch -Y EXTERNAL -H ldapi:/// \
+      -b "olcDatabase={1}mdb,cn=config" olcAccess \
+      | grep -E 'cn=(admin|replicator)' | wc -l
+  args:
+    executable: /bin/bash
+  register: verify_count
+  changed_when: false
+  when: is_writer | bool
+
+- name: FAIL if fewer than 2 ACL entries found
+  assert:
+    that:
+      - verify_count.stdout | int >= 2
+    fail_msg: "ACLs missing replicator or admin on {{ inventory_hostname }}"
+  when: is_writer | bool

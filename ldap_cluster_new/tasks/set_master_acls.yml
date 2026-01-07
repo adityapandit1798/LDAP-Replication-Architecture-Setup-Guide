@@ -1,0 +1,45 @@
+---
+- name: Set replication ACLs on master database
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+    dn: olcDatabase={1}mdb,cn=config
+    changetype: modify
+    replace: olcAccess
+    olcAccess: {0}to attrs=userPassword,shadowLastChange by dn="cn=admin,dc=innspark,dc=in" write by anonymous auth by self write by * none
+    -
+    replace: olcAccess
+    olcAccess: {1}to * by dn="cn=replicator,dc=innspark,dc=in" read by dn="cn=admin,dc=innspark,dc=in" write by * read
+    EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when: result.rc not in [0, 20]   # 20 = "Type or value exists"
+  changed_when: result.rc == 0
+  when: is_writer | bool
+
+- name: DEBUG – ACLs updated on {{ inventory_hostname }}
+  debug:
+    msg: "ACLs configured for master {{ inventory_hostname }}"
+  when: is_writer | bool and result.rc == 0
+
+- name: VERIFY – ACLs are present
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapsearch -Y EXTERNAL -H ldapi:/// \
+      -b "olcDatabase={1}mdb,cn=config" olcAccess \
+      | grep -q "cn=replicator" && echo "OK" || echo "MISSING"
+  args:
+    executable: /bin/bash
+  register: verify_result
+  changed_when: false
+  when: is_writer | bool
+
+- name: FAIL if ACLs missing on master
+  assert:
+    that:
+      - verify_result.stdout == "OK"
+    fail_msg: "Replication ACLs not found on master {{ inventory_hostname }}"
+  when: is_writer | bool

@@ -1,0 +1,54 @@
+---
+- name: Gather remote masters (in opposite region)
+  set_fact:
+    remote_masters: >-
+      {{
+        groups['writers']
+        | map('extract', hostvars)
+        | selectattr('region', '!=', region)
+        | selectattr('public_ip', 'defined')
+        | list
+      }}
+  when: is_writer | bool
+
+- name: FAIL if no remote masters found
+  assert:
+    that: remote_masters | length >= 2
+    fail_msg: "No remote masters with public_ip found for cross-region sync from {{ inventory_hostname }}"
+  when: is_writer | bool
+
+- name: Configure cross-region syncrepl (dynamic)
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapmodify -Y EXTERNAL -H ldapi:/// <<'EOF'
+    dn: olcDatabase={1}mdb,cn=config
+    changetype: modify
+    add: olcSyncrepl
+    {% for master in remote_masters %}
+    olcSyncrepl: rid={{ '%03d' | format(3 + loop.index - 1) }} provider=ldap://{{ master.public_ip }}:389 bindmethod=simple binddn="cn=replicator,{{ ldap_suffix }}" credentials={{ ldap_admin_password }} searchbase="{{ ldap_suffix }}" schemachecking=on type=refreshAndPersist retry="60 +"
+    {% endfor %}
+    EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when: result.rc not in [0, 20, 68]
+  changed_when: result.rc == 0
+  when: is_writer | bool
+
+- name: VERIFY – cross-region syncrepl count
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapsearch -Y EXTERNAL -H ldapi:/// -b "olcDatabase={1}mdb,cn=config" olcSyncrepl | grep -c "rid=00[3456]"
+  args:
+    executable: /bin/bash
+  register: count
+  changed_when: false
+  when: is_writer | bool
+
+- name: FAIL if cross-region syncrepl not applied
+  assert:
+    that: count.stdout | int == (remote_masters | length)
+    fail_msg: "Expected {{ remote_masters | length }} cross-region syncrepl entries, got {{ count.stdout }}"
+  when: is_writer | bool

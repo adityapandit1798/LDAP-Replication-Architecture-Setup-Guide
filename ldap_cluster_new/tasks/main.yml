@@ -1,0 +1,81 @@
+---
+# Step 1: Install OpenLDAP on all LDAP nodes (manual Step 1)
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Pre-seed debconf answers for slapd (like dpkg-reconfigure)
+  debconf:
+    name: slapd
+    question: "{{ item.question }}"
+    value: "{{ item.value }}"
+    vtype: "{{ item.vtype }}"
+  loop:
+    - { question: "slapd/no_configuration", value: "false", vtype: "boolean" }
+    - { question: "slapd/domain", value: "innspark.in", vtype: "string" }
+    - { question: "shared/organization", value: "innspark", vtype: "string" }
+    - { question: "slapd/password1", value: "password", vtype: "password" }
+    - { question: "slapd/password2", value: "password", vtype: "password" }
+    - { question: "slapd/backend", value: "MDB", vtype: "select" }
+    - { question: "slapd/purge_database", value: "false", vtype: "boolean" }
+    - { question: "slapd/move_old_database", value: "true", vtype: "boolean" }
+    - { question: "slapd/allow_ldap_v2", value: "false", vtype: "boolean" }
+
+- name: Install slapd and ldap-utils
+  apt:
+    name:
+      - slapd
+      - ldap-utils
+    state: present
+
+- name: Ensure slapd is running
+  systemd:
+    name: slapd
+    state: started
+    enabled: true
+
+- name: VERIFY - slapd is active
+  command: systemctl is-active slapd
+
+- name: VERIFY - correct suffix exists
+  command: ldapsearch -x -H ldap://localhost:389 -b "" -s base namingContexts
+
+  # setp 2 is in syncprov.yml
+- name: Include syncprov setup for all LDAP nodes
+  include_tasks: syncprov.yml
+
+#step 3 is in set_server_id.yml
+- name: Set olcServerID on all LDAP nodes
+  include_tasks: set_server_id.yml
+
+# step 4 is in create_replicator_user.yml
+- name: Create replicator user on masters
+  include_tasks: create_replicator_user.yml
+
+# step 5 is in set_master_acls.yml
+- name: Set master-specific ACLs
+  include_tasks: set_master_acls.yml
+
+# step 6 is in set_acls.yml
+- name: Configure replication ACLs on masters
+  include_tasks: set_acls.yml
+
+# step 7 is in configure_intra_region_syncrepl.yml
+- name: Configure intra-region replication (masters only)
+  include_tasks: configure_intra_region_syncrepl.yml
+
+# step 8 is in enable_mirrormode.yml
+- name: Enable MirrorMode and MultiProvider
+  include_tasks: enable_mirrormode.yml
+
+
+# step 9 is in configure_readers.yml
+- name: Configure reader nodes
+  include_tasks: configure_readers.yml
+
+# step 10 would be to add inter-region syncrepl (not yet implemented)
+- name: Configure cross-region replication
+  include_tasks: configure_cross_region_syncrepl.yml
+  when: is_writer | bool
