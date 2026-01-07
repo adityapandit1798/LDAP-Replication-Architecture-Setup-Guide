@@ -5,316 +5,511 @@ This document provides a **step-by-step guide** to create a production-ready LDA
 - 2 Replicas (Read-Only)
 - 1 HAProxy Load Balancer
 - Proper domain: `dc=innspark,dc=in`
+```
+Internal Sync (Pune):
+Master 1 <----------> Master 2 (Master-Master Sync)
+Master 2 -----------> Read 1 (Master-Read Sync)
+Master 2 -----------> Read 2 (Master-Read Sync)
+Master 1 -----------> Read 3 (Master-Read Sync)
+Master 1 -----------> Read 4 (Master-Read Sync)
 
----
-```markdown
-# LDAP Architecture Diagram
+Internal Sync (Mumbai):
+Master 1 <----------> Master 2 (Master-Master Sync)
+Master 2 -----------> Read 1 (Master-Read Sync)
+Master 2 -----------> Read 2 (Master-Read Sync)
+Master 1 -----------> Read 3 (Master-Read Sync)
+Master 2 -----------> Read 4 (Master-Read Sync)
+
+Cross-Region Sync:
+Pune Master 1 <----------> Mumbai Master 1 (ORCA Sync)
+Pune Master 2 <----------> Mumbai Master 2 (ORCA Sync)
+
+Failover Sync (Pune):
+If Master 1 fails:
+   Master 2 -----------> Read 1 (Master-Read Sync)
+   Master 2 -----------> Read 2 (Master-Read Sync)
+   Master 2 -----------> Read 3 (Master-Read Sync)
+   Master 2 -----------> Read 4 (Master-Read Sync)
+
+Failover Sync (Mumbai):
+If Master 1 fails:
+   Master 2 -----------> Read 1 (Master-Read Sync)
+   Master 2 -----------> Read 2 (Master-Read Sync)
+   Master 2 -----------> Read 3 (Master-Read Sync)
+   Master 2 -----------> Read 4 (Master-Read Sync)
 
 ```
-                    +--------------------------------------------------+
-                    |                APPLICATION SERVER                |
-                    |  (Your web app, authentication system, etc.)     |
-                    +--------------------------------------------------+
-                                        |
-                                        | LDAP Requests
-                                        ↓
-                    +--------------------------------------------------+
-                    |                HAProxy LOAD BALANCER             |
-                    |  IP: 192.168.192.162                            |
-                    |  Port 389 → Master (Writes)                     |
-                    |  Port 390 → Replicas (Reads)                    |
-                    +--------------------------------------------------+
-                                        |
-          +-----------------------------+-----------------------------+
-          |                                                           |
-          | (Port 389 - Write Traffic)                                | (Port 390 - Read Traffic)
-          ↓                                                           ↓
-+---------------------+                                   +---------------------+
-|   MASTER SERVER     |                                   |   REPLICA SERVERS   |
-|   IP: 192.168.192.157|                                   |                     |
-|   Role: Read/Write  |                                   |  +----------------+ |
-|   Database: Primary |                                   |  | Replica 1      | |
-|                     |                                   |  | IP: 192.168.192.158| |
-|                     |                                   |  | Role: Read-Only | |
-|                     |                                   |  +----------------+ |
-|                     |                                   |          |          |
-|                     |                                   |  +----------------+ |
-|                     |                                   |  | Replica 2      | |
-|                     |                                   |  | IP: 192.168.192.159| |
-|                     |                                   |  | Role: Read-Only | |
-+---------------------+                                   |  +----------------+ |
-          ↑                                                           |
-          |                                                           |
-          +------------------- REPLICATION TRAFFIC -------------------+
-                              (Port 389, syncprov → syncrepl)
-```
 
+This guide provides **detailed, step-by-step instructions** for setting up an **OpenLDAP cluster** with 4 **write masters**, 8 **read replicas**, and an 2 **HAProxy load balancers in 2 regions** . It also includes instructions for **scaling** the cluster by adding more nodes.
 
-## 🖥️ **VM Requirements**
+### ✅ **Phase 1: Pune Region Setup**
 
-| VM Name | IP Address | Role | OS |
-| --- | --- | --- | --- |
-| `ldap-master` | `192.168.192.157` | Master (RW) | Ubuntu 22.04 |
-| `ldap-r1` | `192.168.192.158` | Replica 1 (RO) | Ubuntu 22.04 |
-| `ldap-r2` | `192.168.192.159` | Replica 2 (RO) | Ubuntu 22.04 |
-| `ldap-lb` | `192.168.192.162` | Load Balancer | Ubuntu 22.04 |
-
----
-
-## 🔧 **Part 1: Master Server Setup (`192.168.192.157`)**
-
-### Step 1.1: Install and Configure OpenLDAP
+### **Step 1: Configure Master 1 (`192.168.192.163`)**
 
 ```bash
-# Install packages
+# 1. Install OpenLDAP
 sudo apt update
-sudo apt install slapd ldap-utils -y
+sudo apt install -y slapd ldap-utils
 
-# Reconfigure with proper domain
+#configure this like this : 
 sudo dpkg-reconfigure slapd
+# During installation, you will be prompted:
+# 1. Omit OpenLDAP server configuration? → No
+# 2. DNS domain name? → innspark.in
+# 3. Organization name? → innspark
+# 4. Administrator password? → password
+# 5. Confirm password? → password
+# 7. Do you want the database to be removed when slapd is purged? → No
+# 8. Move old database? → Yes
+# 9. Allow LDAPv2 protocol? → No
 
-```
-
-**Configuration Answers:**
-
-- Omit OpenLDAP server configuration? → **No**
-- DNS domain name: → **`innspark.in`**
-- Organization name: → **`Innspark`**
-- Administrator password: → **`password`**
-- Database backend: → **`MDB`**
-- Remove database when purged? → **No**
-- Move old database? → **Yes**
-- Allow LDAPv2? → **No**
-
-### Step 1.2: Load syncprov Module
-
-**File: `load-syncprov.ldif`**
-
-```
-# Load the syncprov module to enable replication provider functionality
-# This module provides the syncprov overlay
+# 2. Load syncprov module
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
 dn: cn=module{0},cn=config
 changetype: modify
 add: olcModuleLoad
 olcModuleLoad: syncprov
+EOF
 
-```
-
-Apply:
-
-```bash
-sudo ldapmodify -Y EXTERNAL -H ldapi:/// -f load-syncprov.ldif
-
-```
-
-### Step 1.3: Enable syncprov Overlay
-
-**File: `enable-syncprov.ldif`**
-
-```
-# Create syncprov overlay on the main database
-# This enables the master to serve replication data to consumers
-# Uses minimal config to avoid objectClass issues
+# 3. Create syncprov overlay
+sudo ldapadd -Y EXTERNAL -H ldapi:/// <<EOF
 dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
 objectClass: olcOverlayConfig
 olcOverlay: syncprov
+EOF
 
-```
+# 4. Set Server ID and Mirror Mode
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 1
 
-Apply:
-
-```bash
-sudo ldapadd -Y EXTERNAL -H ldapi:/// -f enable-syncprov.ldif
-
-```
-
-### Step 1.4: Create Replicator User
-
-**File: `replicator.ldif`**
-
-```
-# Service account for replicas to authenticate and sync data
-# Uses plain text password (OpenLDAP auto-hashes it)
-# DN: cn=replicator,dc=innspark,dc=in
-dn: cn=replicator,dc=innspark,dc=in
-objectClass: simpleSecurityObject    # Allows userPassword attribute
-objectClass: organizationalRole     # Generic role objectClass
-cn: replicator                      # Common name
-description: LDAP replication user  # Description
-userPassword: password              # Plain text (will be hashed automatically)
-
-```
-
-Apply:
-
-```bash
-ldapadd -x -D "cn=admin,dc=innspark,dc=in" -w password -f replicator.ldif
-
-```
-
-### Step 1.5: Configure Replication ACLs
-
-**File: `acl-replicator.ldif`**
-
-```
-# Access Control Lists for replication
-# Rule {0}: Password security - only admin can modify passwords
-# Rule {1}: Replication access - replicator can read everything, admin can write, others can read
 dn: olcDatabase={1}mdb,cn=config
 changetype: modify
-add: olcAccess
+replace: olcMirrorMode
+olcMirrorMode: TRUE
+EOF
+
+# 5. Create replicator user
+ldapadd -x -D "cn=admin,dc=innspark,dc=in" -w password <<EOF
+dn: cn=replicator,dc=innspark,dc=in
+objectClass: simpleSecurityObject
+objectClass: organizationalRole
+cn: replicator
+userPassword: password
+EOF
+
+# 6. Set ACLs
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcAccess
 olcAccess: {0}to attrs=userPassword,shadowLastChange by dn="cn=admin,dc=innspark,dc=in" write by anonymous auth by self write by * none
 -
-add: olcAccess
+replace: olcAccess
 olcAccess: {1}to * by dn="cn=replicator,dc=innspark,dc=in" read by dn="cn=admin,dc=innspark,dc=in" write by * read
+EOF
 
-```
-
-Apply:
-
-```bash
-sudo ldapmodify -Y EXTERNAL -H ldapi:/// -f acl-replicator.ldif
-
-```
-
-### Step 1.6: Verify Master Setup
-
-```bash
-# Test replicator authentication
-ldapwhoami -x -D "cn=replicator,dc=innspark,dc=in" -w password -H ldap://192.168.192.157
-
-# Expected output: dn:cn=replicator,dc=innspark,dc=in
+# 7. Configure syncrepl to Master 2 (private IP)
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=002 provider=ldap://192.168.192.164:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+EOF
 
 ```
 
 ---
 
-## 🔧 **Part 2: Replica Server Setup (`192.168.192.158` and `192.168.192.159`)**
+## ✅ **Masters Requiring `olcMirrorMode: TRUE`**
 
-### Step 2.1: Install OpenLDAP (Same on both replicas)
+### **Set `olcMultiProvider` (and `olcMirrorMode` )**
 
 ```bash
-# Install packages (use any password during setup - it will be overwritten)
+# On each master server 
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcMultiProvider
+olcMultiProvider: TRUE
+-
+replace: olcMirrorMode
+olcMirrorMode: TRUE
+EOF
+
+```
+
+### **Step 2: Configure Master 2 (`192.168.192.164`)**
+
+```bash
+# 1. Install OpenLDAP (same as above)
 sudo apt update
-sudo apt install slapd ldap-utils -y
+sudo apt install -y slapd ldap-utils
+sudo dpkg-reconfigure slapd
 
-```
+# 2. Load syncprov module
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: syncprov
+EOF
 
-### Step 2.2: Configure as Consumer
+# 3. Create syncprov overlay
+sudo ldapadd -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+olcOverlay: syncprov
+EOF
 
-**File: `consumer-config.ldif`**
-
-```
-# Configure this server as a replication consumer
-# Unique Server ID for this replica (r1=2, r2=3)
+# 4. Set Server ID and Mirror Mode
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
 dn: cn=config
 changetype: modify
 replace: olcServerID
-olcServerID: 2  # Use 3 for the second replica
+olcServerID: 2
 
-# Set the correct base DN to match master
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcMirrorMode
+olcMirrorMode: TRUE
+EOF
+
+# 5. Create replicator user
+ldapadd -x -D "cn=admin,dc=innspark,dc=in" -w password <<EOF
+dn: cn=replicator,dc=innspark,dc=in
+objectClass: simpleSecurityObject
+objectClass: organizationalRole
+cn: replicator
+userPassword: password
+EOF
+
+# 6. Set ACLs
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcAccess
+olcAccess: {0}to attrs=userPassword,shadowLastChange by dn="cn=admin,dc=innspark,dc=in" write by anonymous auth by self write by * none
+-
+replace: olcAccess
+olcAccess: {1}to * by dn="cn=replicator,dc=innspark,dc=in" read by dn="cn=admin,dc=innspark,dc=in" write by * read
+EOF
+
+# 7. Configure syncrepl to Master 1 (private IP)
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=001 provider=ldap://192.168.192.163:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+EOF
+
+```
+
+---
+
+## ✅ **Masters Requiring `olcMirrorMode: TRUE`**
+
+### **Set `olcMultiProvider` (and `olcMirrorMode` )**
+
+```bash
+# On each master server 
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcMultiProvider
+olcMultiProvider: TRUE
+-
+replace: olcMirrorMode
+olcMirrorMode: TRUE
+EOF
+
+```
+
+### **Step 3: Configure Read Nodes in Pune**
+
+### **Read Node 1 (`192.168.192.165`)**
+
+```bash
+# 1. Install OpenLDAP
+sudo apt update
+sudo apt install -y slapd ldap-utils
+sudo dpkg-reconfigure slapd
+
+# 2. Load syncprov module
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: syncprov
+EOF
+
+# 3. Create syncprov overlay
+sudo ldapadd -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+olcOverlay: syncprov
+EOF
+
+# 4. Configure Read Node 1 to sync from both Pune Masters (private IPs)
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 3
+
 dn: olcDatabase={1}mdb,cn=config
 changetype: modify
 replace: olcSuffix
 olcSuffix: dc=innspark,dc=in
 
-# Set root DN to match master
 dn: olcDatabase={1}mdb,cn=config
 changetype: modify
 replace: olcRootDN
 olcRootDN: cn=admin,dc=innspark,dc=in
 
-# Set root password to match master
 dn: olcDatabase={1}mdb,cn=config
 changetype: modify
 replace: olcRootPW
 olcRootPW: password
 
-# Configure syncrepl to pull from master
-# rid=001: unique replication ID
-# provider: master server IP
-# binddn: replicator user from master
-# credentials: replicator password
-# searchbase: base DN to replicate
-# type=refreshAndPersist: real-time sync with persistent connection
-# retry: retry strategy if connection fails
 dn: olcDatabase={1}mdb,cn=config
 changetype: modify
 add: olcSyncrepl
-olcSyncrepl: rid=001 provider=ldap://192.168.192.157:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+olcSyncrepl: rid=001 provider=ldap://192.168.192.163:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+-
+add: olcSyncrepl
+olcSyncrepl: rid=002 provider=ldap://192.168.192.164:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
 
-# Ensure this is not a mirror mode (read-only consumer)
 dn: olcDatabase={1}mdb,cn=config
 changetype: modify
 replace: olcMirrorMode
 olcMirrorMode: FALSE
-
-```
-
-### Step 2.3: Apply Configuration (Same on both replicas)
-
-```bash
-# Stop slapd to clear database
-sudo systemctl stop slapd
-sudo rm -rf /var/lib/ldap/*
-
-# Start slapd to apply config
-sudo systemctl start slapd
-
-# Apply consumer configuration
-sudo ldapmodify -Y EXTERNAL -H ldapi:/// -f consumer-config.ldif
-
-# Clear database again for fresh sync from master
-sudo systemctl stop slapd
-sudo rm -rf /var/lib/ldap/*
-sudo systemctl start slapd
-
-```
-
-> Note for second replica (192.168.192.159): Change olcServerID: 2 to olcServerID: 3 in the LDIF file.
-> 
-
-### Step 2.4: Verify Replica Setup
-
-```bash
-# Wait 20-30 seconds for initial sync
-sleep 30
-
-# Verify base entry exists
-ldapsearch -x -b "dc=innspark,dc=in" -s base
-
-# Verify replicator user exists
-ldapsearch -x -b "dc=innspark,dc=in" "(cn=replicator)" dn
-
-# Verify write operations are blocked
-ldapadd -x -D "cn=admin,dc=innspark,dc=in" -w password <<EOF
-dn: cn=test-replica,dc=innspark,dc=in
-objectClass: organizationalRole
-cn: test-replica
 EOF
-# Expected: ldap_add: Server is unwilling to perform (53)
+
+# 5. Clear database and restart
+sudo systemctl stop slapd
+sudo rm -rf /var/lib/ldap/*
+sudo systemctl start slapd
+
+```
+
+### **Read Node 2 (`192.168.192.166`)**
+
+```bash
+# 1. Install OpenLDAP
+sudo apt update
+sudo apt install -y slapd ldap-utils
+sudo dpkg-reconfigure slapd
+
+# 2. Load syncprov module
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: syncprov
+EOF
+
+# 3. Create syncprov overlay
+sudo ldapadd -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+olcOverlay: syncprov
+EOF
+
+# 4. Configure Read Node 2 to sync from both Pune Masters (private IPs)
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 4
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: dc=innspark,dc=in
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcRootDN
+olcRootDN: cn=admin,dc=innspark,dc=in
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcRootPW
+olcRootPW: password
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=001 provider=ldap://192.168.192.163:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+-
+add: olcSyncrepl
+olcSyncrepl: rid=002 provider=ldap://192.168.192.164:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcMirrorMode
+olcMirrorMode: FALSE
+EOF
+
+# 5. Clear database and restart
+sudo systemctl stop slapd
+sudo rm -rf /var/lib/ldap/*
+sudo systemctl start slapd
+
+```
+
+### **Read Node 3 (`192.168.192.167`)**
+
+```bash
+# 1. Install OpenLDAP
+sudo apt update
+sudo apt install -y slapd ldap-utils
+sudo dpkg-reconfigure slapd
+
+# 2. Load syncprov module
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: syncprov
+EOF
+
+# 3. Create syncprov overlay
+sudo ldapadd -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+olcOverlay: syncprov
+EOF
+
+# 4. Configure Read Node 3 to sync from both Pune Masters (private IPs)
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 5
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: dc=innspark,dc=in
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcRootDN
+olcRootDN: cn=admin,dc=innspark,dc=in
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcRootPW
+olcRootPW: password
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=001 provider=ldap://192.168.192.163:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+-
+add: olcSyncrepl
+olcSyncrepl: rid=002 provider=ldap://192.168.192.164:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcMirrorMode
+olcMirrorMode: FALSE
+EOF
+
+# 5. Clear database and restart
+sudo systemctl stop slapd
+sudo rm -rf /var/lib/ldap/*
+sudo systemctl start slapd
+
+```
+
+### **Read Node 4 (`192.168.192.170`)**
+
+```bash
+# 1. Install OpenLDAP
+sudo apt update
+sudo apt install -y slapd ldap-utils
+sudo dpkg-reconfigure slapd
+
+# 2. Load syncprov module
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: syncprov
+EOF
+
+# 3. Create syncprov overlay
+sudo ldapadd -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+olcOverlay: syncprov
+EOF
+
+# 4. Configure Read Node 4 to sync from both Pune Masters (private IPs)
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 6
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: dc=innspark,dc=in
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcRootDN
+olcRootDN: cn=admin,dc=innspark,dc=in
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcRootPW
+olcRootPW: password
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=001 provider=ldap://192.168.192.163:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+-
+add: olcSyncrepl
+olcSyncrepl: rid=002 provider=ldap://192.168.192.164:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcMirrorMode
+olcMirrorMode: FALSE
+EOF
+
+# 5. Clear database and restart
+sudo systemctl stop slapd
+sudo rm -rf /var/lib/ldap/*
+sudo systemctl start slapd
 
 ```
 
 ---
 
-## 🔧 **Part 3: Load Balancer Setup (`192.168.192.162`)**
-
-### Step 3.1: Install HAProxy
+### **Step 4: Configure Pune HAProxy (`192.168.192.162`)**
 
 ```bash
+# 1. Install HAProxy
 sudo apt update
-sudo apt install haproxy -y
-sudo systemctl enable haproxy
+sudo apt install -y haproxy
+
+# 2. Configure HAProxy
+sudo nano /etc/haproxy/haproxy.cfg
 
 ```
 
-### Step 3.2: Configure HAProxy
-
-**File: `/etc/haproxy/haproxy.cfg`**
+Replace the content with:
 
 ```
-# Global HAProxy configuration
 global
     log /dev/log local0
     log /dev/log local1 notice
@@ -325,155 +520,729 @@ global
     group haproxy
     daemon
 
-    # SSL settings (not used for LDAP but good to have)
+    # Default SSL material locations
     ca-base /etc/ssl/certs
     crt-base /etc/ssl/private
-    ssl-default-bind-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256
-    ssl-default-bind-ciphersuites TLS_AES_128_GCM_SHA256
+
+    # See: <https://ssl-config.mozilla.org/#server=haproxy&server-version=2.0.3&config=intermediate>
+    ssl-default-bind-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
+    ssl-default-bind-ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256
     ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
 
-# Default settings for all frontends/backends
 defaults
     log global
-    mode tcp                    # LDAP uses TCP (not HTTP)
-    option tcplog              # Log TCP connection details
-    option dontlognull         # Don't log null connections
-    timeout connect 5000       # 5s connection timeout
-    timeout client 50000       # 50s client timeout
-    timeout server 50000       # 50s server timeout
+    mode tcp              # <- CRITICAL FOR LDAP
+    option tcplog
+    timeout connect 5000
+    timeout client  50000
+    timeout server  50000
 
-# Frontend for LDAP WRITE operations (port 389)
-# Routes all traffic to master only
+# LDAP Write Operations (to Masters)
 frontend ldap_write
-    bind *:389                 # Listen on standard LDAP port
+    bind *:389
     mode tcp
     default_backend ldap_master
 
-# Backend for master server (write operations)
 backend ldap_master
     mode tcp
-    balance first              # Always use first available server (master only)
-    server ldap-m1 192.168.192.157:389 check  # Master server with health check
+    balance leastconn
+    server ldap-m1 192.168.192.163:389 check
+    server ldap-m2 192.168.192.164:389 check
 
-# Frontend for LDAP READ operations (port 390)
-# Routes traffic to replicas for read scaling
+# LDAP Read Operations (to Replicas)
 frontend ldap_read
-    bind *:390                 # Custom port for read operations
+    bind *:390
     mode tcp
     default_backend ldap_replicas
 
-# Backend for replica servers (read operations)
 backend ldap_replicas
     mode tcp
-    balance roundrobin        # Distribute reads evenly across replicas
-    server ldap-r1 192.168.192.158:389 check  # Replica 1 with health check
-    server ldap-r2 192.168.192.159:389 check  # Replica 2 with health check
+    balance roundrobin
+    server ldap-r1 192.168.192.165:389 check
+    server ldap-r2 192.168.192.166:389 check
+    server ldap-r3 192.168.192.167:389 check
+    server ldap-r4 192.168.192.170:389 check
 
 ```
 
-### Step 3.3: Start and Verify HAProxy
-
 ```bash
-# Test configuration
-sudo haproxy -c -f /etc/haproxy/haproxy.cfg
-
-# Restart HAProxy
-sudo systemctl restart haproxy
-
-# Verify status
-sudo systemctl status haproxy
+# 3. Start HAProxy
+sudo systemctl enable haproxy
+sudo systemctl start haproxy
 
 ```
 
 ---
 
-## 🧪 **Part 4: End-to-End Testing**
+### ✅ **Phase 2: Mumbai Region Setup**
 
-### Test 4.1: Write Through Load Balancer
+### **Step 1: Configure Master 1 (`10.10.10.6`)**
 
 ```bash
-# Write to master via HAProxy port 389
-ldapadd -x -H ldap://192.168.192.162:389 -D "cn=admin,dc=innspark,dc=in" -w password <<EOF
-dn: cn=write-test,dc=innspark,dc=in
-objectClass: organizationalRole
-cn: write-test
+# 1. Install OpenLDAP
+sudo apt update
+sudo apt install -y slapd ldap-utils
+
+# 2. Load syncprov module
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: syncprov
 EOF
 
-# Expected: adding new entry "cn=write-test,dc=innspark,dc=in"
+# 3. Create syncprov overlay
+sudo ldapadd -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+olcOverlay: syncprov
+EOF
+
+# 4. Set Server ID and Mirror Mode
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 7
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcMirrorMode
+olcMirrorMode: TRUE
+EOF
+
+# 5. Create replicator user
+ldapadd -x -D "cn=admin,dc=innspark,dc=in" -w password <<EOF
+dn: cn=replicator,dc=innspark,dc=in
+objectClass: simpleSecurityObject
+objectClass: organizationalRole
+cn: replicator
+userPassword: password
+EOF
+
+# 6. Set ACLs
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcAccess
+olcAccess: {0}to attrs=userPassword,shadowLastChange by dn="cn=admin,dc=innspark,dc=in" write by anonymous auth by self write by * none
+-
+replace: olcAccess
+olcAccess: {1}to * by dn="cn=replicator,dc=innspark,dc=in" read by dn="cn=admin,dc=innspark,dc=in" write by * read
+EOF
+
+# 7. Configure syncrepl to Master 2 (private IP)
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=002 provider=ldap://10.10.10.7:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+EOF
 
 ```
 
-### Test 4.2: Read Through Load Balancer
+---
+
+## ✅ **Masters Requiring `olcMirrorMode: TRUE`**
+
+### **Set `olcMultiProvider` (and `olcMirrorMode` )**
 
 ```bash
-# Read from replicas via HAProxy port 390
-ldapsearch -x -H ldap://192.168.192.162:390 -b "dc=innspark,dc=in" "(cn=write-test)" dn
-
-# Expected: dn: cn=write-test,dc=innspark,dc=in
+# On each master server 
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcMultiProvider
+olcMultiProvider: TRUE
+-
+replace: olcMirrorMode
+olcMirrorMode: TRUE
+EOF
 
 ```
 
-### Test 4.3: Verify Replication
+### **Step 2: Configure Master 2 (`10.10.10.7`)**
 
 ```bash
-# Check CSN consistency across all servers
-echo "Master CSN:"
-ldapsearch -x -b "dc=innspark,dc=in" -s base contextCSN
+# 1. Install OpenLDAP
+sudo apt update
+sudo apt install -y slapd ldap-utils
 
-echo "Replica 1 CSN:"
-ldapsearch -x -H ldap://192.168.192.158 -b "dc=innspark,dc=in" -s base contextCSN
+# 2. Load syncprov module
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: syncprov
+EOF
 
-echo "Replica 2 CSN:"
-ldapsearch -x -H ldap://192.168.192.159 -b "dc=innspark,dc=in" -s base contextCSN
+# 3. Create syncprov overlay
+sudo ldapadd -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+olcOverlay: syncprov
+EOF
 
-# All should have identical or very close CSN values
+# 4. Set Server ID and Mirror Mode
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 8
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcMirrorMode
+olcMirrorMode: TRUE
+EOF
+
+# 5. Create replicator user
+ldapadd -x -D "cn=admin,dc=innspark,dc=in" -w password <<EOF
+dn: cn=replicator,dc=innspark,dc=in
+objectClass: simpleSecurityObject
+objectClass: organizationalRole
+cn: replicator
+userPassword: password
+EOF
+
+# 6. Set ACLs
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcAccess
+olcAccess: {0}to attrs=userPassword,shadowLastChange by dn="cn=admin,dc=innspark,dc=in" write by anonymous auth by self write by * none
+-
+replace: olcAccess
+olcAccess: {1}to * by dn="cn=replicator,dc=innspark,dc=in" read by dn="cn=admin,dc=innspark,dc=in" write by * read
+EOF
+
+# 7. Configure syncrepl to Master 1 (private IP)
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=001 provider=ldap://10.10.10.6:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+EOF
 
 ```
 
 ---
 
-## 🔍 **Part 5: How Replication Works**
+## ✅ **Masters Requiring `olcMirrorMode: TRUE`**
 
-### Key Concepts:
+### **Set `olcMultiProvider` (and `olcMirrorMode` )**
 
-- **CSN (Change Sequence Number)**: `{timestamp}#{serverID}#{operationID}` - uniquely identifies each change
-- **syncprov**: Master overlay that tracks changes and serves them to consumers
-- **syncrepl**: Consumer configuration that pulls changes from provider
-- **refreshAndPersist**: Real-time replication mode with persistent connections
-- **Session Log**: Circular buffer of recent changes for offline replica catch-up
+```bash
+# On each master server 
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcMultiProvider
+olcMultiProvider: TRUE
+-
+replace: olcMirrorMode
+olcMirrorMode: TRUE
+EOF
 
-### Data Flow:
+```
 
-1. Client writes to HAProxy:389 → Master
-2. Master generates CSN and logs change in session log
-3. Replicas (persistent connections) receive change notification
-4. Replicas pull new data using replicator credentials
-5. Replicas apply changes and update local CSN
-6. Client reads from HAProxy:390 → Replicas (fresh data)
+### **Step 3: Configure Read Nodes in Mumbai**
+
+### **Read Node 1 (`10.10.10.8`)**
+
+```bash
+# 1. Install OpenLDAP
+sudo apt update
+sudo apt install -y slapd ldap-utils
+
+# 2. Load syncprov module
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: syncprov
+EOF
+
+# 3. Create syncprov overlay
+sudo ldapadd -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+olcOverlay: syncprov
+EOF
+
+# 4. Configure Read Node 1 to sync from both Mumbai Masters (private IPs)
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 9
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: dc=innspark,dc=in
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcRootDN
+olcRootDN: cn=admin,dc=innspark,dc=in
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcRootPW
+olcRootPW: password
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=001 provider=ldap://10.10.10.6:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+-
+add: olcSyncrepl
+olcSyncrepl: rid=002 provider=ldap://10.10.10.7:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcMirrorMode
+olcMirrorMode: FALSE
+EOF
+
+# 5. Clear database and restart
+sudo systemctl stop slapd
+sudo rm -rf /var/lib/ldap/*
+sudo systemctl start slapd
+
+```
+
+### **Read Node 2 (`10.10.10.9`)**
+
+```bash
+# 1. Install OpenLDAP
+sudo apt update
+sudo apt install -y slapd ldap-utils
+
+# 2. Load syncprov module
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: syncprov
+EOF
+
+# 3. Create syncprov overlay
+sudo ldapadd -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+olcOverlay: syncprov
+EOF
+
+# 4. Configure Read Node 2 to sync from both Mumbai Masters (private IPs)
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 10
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: dc=innspark,dc=in
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcRootDN
+olcRootDN: cn=admin,dc=innspark,dc=in
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcRootPW
+olcRootPW: password
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=001 provider=ldap://10.10.10.6:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+-
+add: olcSyncrepl
+olcSyncrepl: rid=002 provider=ldap://10.10.10.7:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcMirrorMode
+olcMirrorMode: FALSE
+EOF
+
+# 5. Clear database and restart
+sudo systemctl stop slapd
+sudo rm -rf /var/lib/ldap/*
+sudo systemctl start slapd
+
+```
+
+### **Read Node 3 (`10.10.10.10`)**
+
+```bash
+# 1. Install OpenLDAP
+sudo apt update
+sudo apt install -y slapd ldap-utils
+
+# 2. Load syncprov module
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: syncprov
+EOF
+
+# 3. Create syncprov overlay
+sudo ldapadd -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+olcOverlay: syncprov
+EOF
+
+# 4. Configure Read Node 3 to sync from both Mumbai Masters (private IPs)
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 11
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: dc=innspark,dc=in
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcRootDN
+olcRootDN: cn=admin,dc=innspark,dc=in
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcRootPW
+olcRootPW: password
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=001 provider=ldap://10.10.10.6:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+-
+add: olcSyncrepl
+olcSyncrepl: rid=002 provider=ldap://10.10.10.7:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcMirrorMode
+olcMirrorMode: FALSE
+EOF
+
+# 5. Clear database and restart
+sudo systemctl stop slapd
+sudo rm -rf /var/lib/ldap/*
+sudo systemctl start slapd
+
+```
+
+### **Read Node 4 (`10.10.10.11`)**
+
+```bash
+# 1. Install OpenLDAP
+sudo apt update
+sudo apt install -y slapd ldap-utils
+
+# 2. Load syncprov module
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: syncprov
+EOF
+
+# 3. Create syncprov overlay
+sudo ldapadd -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcOverlay=syncprov,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+olcOverlay: syncprov
+EOF
+
+# 4. Configure Read Node 4 to sync from both Mumbai Masters (private IPs)
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=config
+changetype: modify
+replace: olcServerID
+olcServerID: 12
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: dc=innspark,dc=in
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcRootDN
+olcRootDN: cn=admin,dc=innspark,dc=in
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcRootPW
+olcRootPW: password
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=001 provider=ldap://10.10.10.6:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+-
+add: olcSyncrepl
+olcSyncrepl: rid=002 provider=ldap://10.10.10.7:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcMirrorMode
+olcMirrorMode: FALSE
+EOF
+
+# 5. Clear database and restart
+sudo systemctl stop slapd
+sudo rm -rf /var/lib/ldap/*
+sudo systemctl start slapd
+
+```
 
 ---
 
-## 📋 **Summary of All Configuration Files**
+### **Step 4: Configure Mumbai HAProxy (`10.10.10.5`)**
 
-| File | Purpose | Location |
-| --- | --- | --- |
-| `load-syncprov.ldif` | Load syncprov module on master | Master |
-| `enable-syncprov.ldif` | Enable syncprov overlay on master | Master |
-| `replicator.ldif` | Create replicator user on master | Master |
-| `acl-replicator.ldif` | Set replication ACLs on master | Master |
-| `consumer-config.ldif` | Configure replicas as consumers | Each Replica |
-| `/etc/haproxy/haproxy.cfg` | Load balancer routing rules | Load Balancer |
+```bash
+# 1. Install HAProxy
+sudo apt update
+sudo apt install -y haproxy
+
+# 2. Configure HAProxy
+sudo nano /etc/haproxy/haproxy.cfg
+
+```
+
+Replace the content with:
+
+```
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    chroot /var/lib/haproxy
+    stats socket /run/haproxy/admin.sock mode 660 level admin expose-fd listeners
+    stats timeout 30s
+    user haproxy
+    group haproxy
+    daemon
+
+    # Default SSL material locations
+    ca-base /etc/ssl/certs
+    crt-base /etc/ssl/private
+
+    # See: <https://ssl-config.mozilla.org/#server=haproxy&server-version=2.0.3&config=intermediate>
+    ssl-default-bind-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
+    ssl-default-bind-ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256
+    ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
+
+defaults
+    log global
+    mode tcp              # <- CRITICAL FOR LDAP
+    option tcplog
+    timeout connect 5000
+    timeout client  50000
+    timeout server  50000
+
+# LDAP Write Operations (to Masters)
+frontend ldap_write
+    bind *:389
+    mode tcp
+    default_backend ldap_master
+
+backend ldap_master
+    mode tcp
+    balance leastconn
+    server ldap-m1 10.10.10.6:389 check
+    server ldap-m2 10.10.10.7:389 check
+
+# LDAP Read Operations (to Replicas)
+frontend ldap_read
+    bind *:390
+    mode tcp
+    default_backend ldap_replicas
+
+backend ldap_replicas
+    mode tcp
+    balance roundrobin
+    server ldap-r1 10.10.10.8:389 check
+    server ldap-r2 10.10.10.9:389 check
+    server ldap-r3 10.10.10.10:389 check
+    server ldap-r4 10.10.10.11:389 check
+
+```
+
+```bash
+# 3. Start HAProxy
+sudo systemctl enable haproxy
+sudo systemctl start haproxy
+
+```
 
 ---
 
-## 🚀 **Application Usage**
+### ✅ **Phase 3: Cross-Region Sync (Pune <-> Mumbai)**
 
-Your applications should connect to:
+### **Step 1: Configure Pune Master 1 to Sync with Mumbai Masters (public IPs)**
 
-- **Write Operations**: `ldap://192.168.192.162:389`
-- **Read Operations**: `ldap://192.168.192.162:390`
-- **Base DN**: `dc=innspark,dc=in`
-- **Admin DN**: `cn=admin,dc=innspark,dc=in`
-- **Password**: `password`
+On **Master 1 (`192.168.192.163`)**:
 
-This architecture provides **read scaling**, **high availability**, and **automatic failover** for your LDAP infrastructure! 🎉
+```bash
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=003 provider=ldap://192.168.50.22:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+-
+add: olcSyncrepl
+olcSyncrepl: rid=004 provider=ldap://192.168.50.23:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+EOF
+
+```
+
+### **Step 2: Configure Pune Master 2 to Sync with Mumbai Masters (public IPs)**
+
+On **Master 2 (`192.168.192.164`)**:
+
+```bash
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=003 provider=ldap://192.168.50.22:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+-
+add: olcSyncrepl
+olcSyncrepl: rid=004 provider=ldap://192.168.50.23:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+EOF
+
+```
+
+### **Step 3: Configure Mumbai Master 1 to Sync with Pune Masters (public IPs)**
+
+On **Master 1 (`10.10.10.6`)**:
+
+```bash
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=003 provider=ldap://192.168.50.19:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+-
+add: olcSyncrepl
+olcSyncrepl: rid=004 provider=ldap://192.168.50.20:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+EOF
+
+```
+
+### **Step 4: Configure Mumbai Master 2 to Sync with Pune Masters (public IPs)**
+
+On **Master 2 (`10.10.10.7`)**:
+
+```bash
+sudo ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcSyncrepl
+olcSyncrepl: rid=003 provider=ldap://192.168.50.19:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+-
+add: olcSyncrepl
+olcSyncrepl: rid=004 provider=ldap://192.168.50.20:389 bindmethod=simple binddn="cn=replicator,dc=innspark,dc=in" credentials=password searchbase="dc=innspark,dc=in" schemachecking=on type=refreshAndPersist retry="60 +"
+EOF
+
+```
+
+---
+
+## 🧪 **Verification Steps**
+
+### **Test 1: Basic Connectivity**
+
+From a client machine:
+
+```bash
+# Test Pune HAProxy
+ldapsearch -x -H ldap://192.168.50.18:389 -b "" -s base namingContexts | grep "dc=innspark,dc=in"
+ldapsearch -x -H ldap://192.168.50.18:390 -b "" -s base namingContexts | grep "dc=innspark,dc=in"
+
+# Test Mumbai HAProxy
+ldapsearch -x -H ldap://192.168.50.21:389 -b "" -s base namingContexts | grep "dc=innspark,dc=in"
+ldapsearch -x -H ldap://192.168.50.21:390 -b "" -s base namingContexts | grep "dc=innspark,dc=in"
+
+```
+
+### **Test 2: Multi-Master Replication Within Region**
+
+```bash
+# Write to Pune Master 1
+ldapadd -x -H ldap://192.168.50.19:389 -D "cn=admin,dc=innspark,dc=in" -w password <<EOF
+dn: cn=test-pune,dc=innspark,dc=in
+objectClass: organizationalRole
+cn: test-pune
+EOF
+
+# Wait 15 seconds, then check Pune Master 2
+ldapsearch -x -H ldap://192.168.50.20:389 -b "dc=innspark,dc=in" "(cn=test-pune)" dn
+
+# Write to Mumbai Master 1
+ldapadd -x -H ldap://192.168.50.22:389 -D "cn=admin,dc=innspark,dc=in" -w password <<EOF
+dn: cn=test-mumbai,dc=innspark,dc=in
+objectClass: organizationalRole
+cn: test-mumbai
+EOF
+
+# Wait 15 seconds, then check Mumbai Master 2
+ldapsearch -x -H ldap://192.168.50.23:389 -b "dc=innspark,dc=in" "(cn=test-mumbai)" dn
+
+```
+
+### **Test 3: Cross-Region Replication**
+
+```bash
+# Write to Pune Master 1
+ldapadd -x -H ldap://192.168.50.19:389 -D "cn=admin,dc=innspark,dc=in" -w password <<EOF
+dn: cn=test-inter-region,dc=innspark,dc=in
+objectClass: organizationalRole
+cn: test-inter-region
+EOF
+
+# Wait 30 seconds, then check Mumbai Master 1
+ldapsearch -x -H ldap://192.168.50.22:389 -b "dc=innspark,dc=in" "(cn=test-inter-region)" dn
+
+# Write to Mumbai Master 1
+ldapadd -x -H ldap://192.168.50.22:389 -D "cn=admin,dc=innspark,dc=in" -w password <<EOF
+dn: cn=test-inter-region-mumbai,dc=innspark,dc=in
+objectClass: organizationalRole
+cn: test-inter-region-mumbai
+EOF
+
+# Wait 30 seconds, then check Pune Master 1
+ldapsearch -x -H ldap://192.168.50.19:389 -b "dc=innspark,dc=in" "(cn=test-inter-region-mumbai)" dn
+
+```
+
+### **Test 4: Replica Sync**
+
+```bash
+# Check if entries are on Pune Read Nodes
+ldapsearch -x -H ldap://192.168.192.165:389 -b "dc=innspark,dc=in" "(cn=test-pune)" dn
+ldapsearch -x -H ldap://192.168.192.166:389 -b "dc=innspark,dc=in" "(cn=test-pune)" dn
+ldapsearch -x -H ldap://192.168.192.167:389 -b "dc=innspark,dc=in" "(cn=test-pune)" dn
+ldapsearch -x -H ldap://192.168.192.170:389 -b "dc=innspark,dc=in" "(cn=test-pune)" dn
+
+# Check if entries are on Mumbai Read Nodes
+ldapsearch -x -H ldap://10.10.10.8:389 -b "dc=innspark,dc=in" "(cn=test-mumbai)" dn
+ldapsearch -x -H ldap://10.10.10.9:389 -b "dc=innspark,dc=in" "(cn=test-mumbai)" dn
+ldapsearch -x -H ldap://10.10.10.10:389 -b "dc=innspark,dc=in" "(cn=test-mumbai)" dn
+ldapsearch -x -H ldap://10.10.10.11:389 -b "dc=innspark,dc=in" "(cn=test-mumbai)" dn
+
+```
+
+---
