@@ -1,0 +1,6 @@
+---
+- include_tasks: add-domain-to-writers.yml
+  when: is_writer | bool
+
+- include_tasks: add-domain-to-readers.yml
+  when: is_reader | bool

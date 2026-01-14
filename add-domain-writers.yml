@@ -1,0 +1,6 @@
+---
+- name: Add new domain to all master nodes
+  hosts: writers
+  become: true
+  roles:
+    - add-ldap-domain

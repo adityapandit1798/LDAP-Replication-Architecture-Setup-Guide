@@ -1,0 +1,8 @@
+- name: Add new LDAP domain
+  hosts: ldap_nodes
+  become: true
+  roles:
+    - add-ldap-domain
+  vars:
+    new_domain: "orca.in"
+    new_domain_admin_password: "password"

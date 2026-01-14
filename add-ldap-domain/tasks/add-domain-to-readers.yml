@@ -1,0 +1,102 @@
+---
+# Copy reader script
+- name: Upload reader domain script to readers
+  copy:
+    src: add-domain-read.sh
+    dest: /tmp/add-domain-read.sh
+    mode: "0755"
+
+# Compute LDAP suffix once
+- name: Compute LDAP suffix
+  set_fact:
+    ldap_suffix: "dc={{ new_domain.split('.') | join(',dc=') }}"
+
+# Set provider for Pune readers (pune-m2)
+- name: Set provider host for Pune readers
+  set_fact:
+    reader_provider_ip: "{{ hostvars['pune-m2'].ldap_host }}"
+  when: region == "pune"
+
+# Set provider for Mumbai readers (mumbai-m2, private preferred)
+- name: Set provider host for Mumbai readers
+  set_fact:
+    reader_provider_ip: >-
+      {{
+        hostvars['mumbai-m2'].get(
+          'ldap_private_ip',
+          hostvars['mumbai-m2'].ldap_host
+        )
+      }}
+  when: region == "mumbai"
+
+# Determine local slapd bind IP (what slapd actually listens on)
+- name: Determine local LDAP bind address (use ldap_host)
+  set_fact:
+    ldap_bind_ip: "{{ ldap_host }}"
+
+
+# Validate provider IP was resolved
+- name: Assert reader provider IP is defined
+  assert:
+    that:
+      - reader_provider_ip is defined
+      - reader_provider_ip | length > 0
+    fail_msg: >
+      Could not determine provider IP for reader {{ inventory_hostname }}
+    success_msg: >
+      Reader {{ inventory_hostname }} will sync from {{ reader_provider_ip }}
+
+# Check live namingContexts (source of truth)
+- name: Check if LDAP domain already exists on reader
+  command: >
+    ldapsearch -x -H ldap://{{ ldap_bind_ip }}:389
+    -b "" -s base namingContexts
+  register: reader_naming_contexts
+  changed_when: false
+  failed_when: false
+
+# Run reader setup ONLY if domain is NOT present
+- name: Run domain setup on reader nodes (only if domain does not exist)
+  shell: >
+    bash /tmp/add-domain-read.sh
+    "{{ new_domain }}"
+    "{{ new_domain_admin_password }}"
+    "{{ inventory_hostname }}"
+    "{{ reader_provider_ip }}"
+  args:
+    executable: /bin/bash
+  when: ldap_suffix not in reader_naming_contexts.stdout
+
+#Wait for slapd to come back on correct interface
+- name: Wait for slapd to be available on reader
+  wait_for:
+    host: "{{ ldap_bind_ip }}"
+    port: 389
+    delay: 5
+    timeout: 10
+
+# Re-check namingContexts after slapd restart
+- name: Re-check namingContexts after reader setup
+  command: >
+    ldapsearch -x -H ldap://{{ ldap_bind_ip }}:389
+    -b "" -s base namingContexts
+  register: reader_naming_contexts_after
+  changed_when: false
+
+# Assert domain is present on reader
+- name: Assert domain is present on reader
+  assert:
+    that:
+      - ldap_suffix in reader_naming_contexts_after.stdout
+    fail_msg: >
+      LDAP domain {{ ldap_suffix }}
+      was NOT found on reader {{ inventory_hostname }}
+    success_msg: >
+      LDAP domain {{ ldap_suffix }}
+      successfully validated on reader {{ inventory_hostname }}
+
+# Cleanup
+- name: Clean up reader script
+  file:
+    path: /tmp/add-domain-read.sh
+    state: absent

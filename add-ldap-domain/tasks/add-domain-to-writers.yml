@@ -1,0 +1,101 @@
+---
+# Install jq (required by master script)
+- name: Install jq (required by master script)
+  apt:
+    name: jq
+    state: present
+
+# Copy master script
+- name: Upload master domain script to writers
+  copy:
+    src: add-domain-master.sh
+    dest: /tmp/add-domain-master.sh
+    mode: "0755"
+
+# Compute LDAP suffix once
+- name: Compute LDAP suffix
+  set_fact:
+    ldap_suffix: "dc={{ new_domain.split('.') | join(',dc=') }}"
+
+# Initialize replication providers list
+- name: Initialize replication providers list
+  set_fact:
+    replication_providers: []
+
+# Build replication providers list (RID + provider)
+- name: Add replication provider entries
+  set_fact:
+    replication_providers: >-
+      {{
+        replication_providers + [
+          {
+            "rid": item.0,
+            "provider": "ldap://" ~ item.1.ldap_host ~ ":389"
+          }
+        ]
+      }}
+  loop: >-
+    {{
+      range(2, 100)
+      | zip(
+          groups['writers']
+          | reject('equalto', inventory_hostname)
+          | map('extract', hostvars)
+          | list
+        )
+    }}
+
+# Convert replication providers list to JSON
+- name: Convert replication providers to JSON
+  set_fact:
+    replication_json: "{{ replication_providers | to_json }}"
+
+# Check live namingContexts (SOURCE OF TRUTH)
+- name: Check if LDAP domain is already exposed (namingContexts)
+  command: >
+    ldapsearch -x -H ldap://127.0.0.1:389
+    -b "" -s base namingContexts
+  register: naming_contexts
+  changed_when: false
+
+# Run script ONLY if domain is NOT exposed
+# NOTE: rc=68 (Already exists) is acceptable because
+#       base DN may already be replicated from another master
+- name: Run domain setup on master nodes (allow rc=68)
+  shell: >
+    bash /tmp/add-domain-master.sh
+    "{{ new_domain }}"
+    "{{ new_domain_admin_password }}"
+    "{{ inventory_hostname }}"
+    '{{ replication_json }}'
+  args:
+    executable: /bin/bash
+  register: master_run
+  failed_when: master_run.rc not in [0, 68]
+  when: ldap_suffix not in naming_contexts.stdout
+
+# Re-check namingContexts after potential creation
+- name: Re-check namingContexts after domain creation
+  command: >
+    ldapsearch -x -H ldap://127.0.0.1:389
+    -b "" -s base namingContexts
+  register: naming_contexts_after
+  changed_when: false
+
+# Assert domain is now present
+- name: Assert domain is present on master
+  assert:
+    that:
+      - ldap_suffix in naming_contexts_after.stdout
+    fail_msg: >
+      LDAP domain {{ ldap_suffix }}
+      was NOT found in namingContexts on {{ inventory_hostname }}
+    success_msg: >
+      LDAP domain {{ ldap_suffix }}
+      successfully validated on {{ inventory_hostname }}
+
+# Cleanup
+- name: Clean up master script
+  file:
+    path: /tmp/add-domain-master.sh
+    state: absent

@@ -1,0 +1,3 @@
+# ~/ldap-cluster-new/add-ldap-domain/defaults/main.yml
+new_domain: "orca11.in"
+new_domain_admin_password: "password"
