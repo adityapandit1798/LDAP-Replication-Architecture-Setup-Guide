@@ -18,16 +18,12 @@
   when: region == "pune"
 
 # Set provider for Mumbai readers (mumbai-m2, private preferred)
+# Set provider host for Mumbai readers (USE HAPROXY PRIVATE IP)
 - name: Set provider host for Mumbai readers
   set_fact:
-    reader_provider_ip: >-
-      {{
-        hostvars['mumbai-m2'].get(
-          'ldap_private_ip',
-          hostvars['mumbai-m2'].ldap_host
-        )
-      }}
+    reader_provider_ip: "{{ hostvars['mumbai-haproxy'].private_ip }}"
   when: region == "mumbai"
+
 
 # Determine local slapd bind IP (what slapd actually listens on)
 - name: Determine local LDAP bind address (use ldap_host)
