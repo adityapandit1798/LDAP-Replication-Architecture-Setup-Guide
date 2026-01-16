@@ -14,10 +14,10 @@
     vtype: "{{ item.vtype }}"
   loop:
     - { question: "slapd/no_configuration", value: "false", vtype: "boolean" }
-    - { question: "slapd/domain", value: "innspark.in", vtype: "string" }
-    - { question: "shared/organization", value: "innspark", vtype: "string" }
-    - { question: "slapd/password1", value: "password", vtype: "password" }
-    - { question: "slapd/password2", value: "password", vtype: "password" }
+    - { question: "slapd/domain", value: "{{ ldap_suffix | regex_replace('dc=','') | regex_replace(',','.') }}", vtype: "string" }
+    - { question: "shared/organization", value: "{{ ldap_suffix.split(',')[0] | replace('dc=','') }}", vtype: "string" }
+    - { question: "slapd/password1", value: "{{ ldap_admin_password }}", vtype: "password" }
+    - { question: "slapd/password2", value: "{{ ldap_admin_password }}", vtype: "password" }
     - { question: "slapd/backend", value: "MDB", vtype: "select" }
     - { question: "slapd/purge_database", value: "false", vtype: "boolean" }
     - { question: "slapd/move_old_database", value: "true", vtype: "boolean" }

@@ -2,3 +2,5 @@
 # defaults file for ldap_cluster_new
 ldap_suffix: "dc=innspark,dc=in"
 ldap_admin_password: "password"
+# Derived value (DO NOT override directly)
+# ldap_suffix: "dc={{ new_domain.split('.') | join(',dc=') }}"
