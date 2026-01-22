@@ -1,0 +1,6 @@
+---
+# Name of the custom schema (without index)
+innspark_schema_name: "innspark-custom"
+
+# Schema DN base (DO NOT change)
+schema_base_dn: "cn=schema,cn=config"

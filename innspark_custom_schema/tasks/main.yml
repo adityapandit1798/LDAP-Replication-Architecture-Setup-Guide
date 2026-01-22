@@ -1,0 +1,202 @@
+---
+###############################################################################
+# Step 1: Upload LDIF to ALL nodes
+###############################################################################
+- name: Upload innspark custom schema LDIF
+  become: true
+  copy:
+    src: innspark-custom-add.ldif
+    dest: /tmp/innspark-custom-add.ldif
+    mode: "0644"
+  register: upload_schema_ldif
+
+- name: DEBUG | Schema LDIF upload result
+  debug:
+    var: upload_schema_ldif
+
+
+###############################################################################
+# Step 2: Apply schema on ALL nodes
+###############################################################################
+- name: Apply innspark custom schema
+  become: true
+  command: ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/innspark-custom-add.ldif
+  register: schema_apply
+  failed_when: schema_apply.rc != 0 and ('Already exists' not in schema_apply.stderr)
+  changed_when: "'adding new entry' in schema_apply.stdout"
+
+- name: DEBUG | ldapadd output
+  debug:
+    msg:
+      - "RC={{ schema_apply.rc }}"
+      - "STDOUT={{ schema_apply.stdout }}"
+      - "STDERR={{ schema_apply.stderr }}"
+
+
+###############################################################################
+# Step 3: Verify schema DN exists (correct + reliable)
+###############################################################################
+- name: Verify innspark custom schema DN exists
+  become: true
+  command: >
+    ldapsearch -Y EXTERNAL -H ldapi:///
+    -b "cn=schema,cn=config" -s one "(cn=*innspark*)" dn
+  register: schema_dn_check
+  changed_when: false
+  failed_when: "'innspark-custom' not in schema_dn_check.stdout"
+
+- name: DEBUG | Schema DN search output
+  debug:
+    msg:
+      - "RC={{ schema_dn_check.rc }}"
+      - "STDOUT={{ schema_dn_check.stdout }}"
+      - "STDERR={{ schema_dn_check.stderr }}"
+
+
+###############################################################################
+# Step 4: Best-effort objectClass visibility check (NO FAILURE)
+###############################################################################
+- name: Check innsparkUser objectClass visibility (informational only)
+  become: true
+  shell: |
+    ldapsearch -Y EXTERNAL -H ldapi:/// \
+      -b "$(ldapsearch -Y EXTERNAL -H ldapi:/// \
+            -b 'cn=schema,cn=config' -s one '(cn=*innspark*)' dn \
+            | awk '/^dn: / {print $2; exit}')" \
+      -s base olcObjectClasses
+  args:
+    executable: /bin/bash
+  register: schema_objclass_check
+  changed_when: false
+  failed_when: false
+
+- name: DEBUG | ObjectClass visibility check
+  debug:
+    msg:
+      - "RC={{ schema_objclass_check.rc }}"
+      - "STDOUT={{ schema_objclass_check.stdout }}"
+      - "STDERR={{ schema_objclass_check.stderr }}"
+
+
+###############################################################################
+# Step 5: Upload troubleshooting LDIFs to ALL nodes
+###############################################################################
+- name: Upload schema attribute LDIF
+  become: true
+  copy:
+    src: innspark-custom-add-troubleshooting.ldif
+    dest: /tmp/innspark-custom-add-troubleshooting.ldif
+    mode: "0644"
+  register: upload_attr_ldif
+
+- name: DEBUG | Attribute LDIF upload
+  debug:
+    var: upload_attr_ldif
+
+
+- name: Upload schema objectClass LDIF
+  become: true
+  copy:
+    src: innspark-custom-add-objectclass.ldif
+    dest: /tmp/innspark-custom-add-objectclass.ldif
+    mode: "0644"
+  register: upload_oc_ldif
+
+- name: DEBUG | ObjectClass LDIF upload
+  debug:
+    var: upload_oc_ldif
+
+
+###############################################################################
+# Step 6a: Apply attribute fix (ADD olcAttributeTypes)
+###############################################################################
+- name: Apply innspark schema attributes
+  become: true
+  command: ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/innspark-custom-add-troubleshooting.ldif
+  register: attr_apply
+  failed_when: attr_apply.rc != 0 and 'Type or value exists' not in attr_apply.stderr
+  changed_when: "'modifying entry' in attr_apply.stdout"
+
+- name: DEBUG | Attribute modify output
+  debug:
+    msg:
+      - "RC={{ attr_apply.rc }}"
+      - "STDOUT={{ attr_apply.stdout }}"
+      - "STDERR={{ attr_apply.stderr }}"
+
+
+###############################################################################
+# Step 6b: Apply objectClass fix (ADD innsparkUser)
+# (UNCHANGED – debugging starts before this step as requested)
+###############################################################################
+- name: Apply innspark schema objectClass
+  become: true
+  command: ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/innspark-custom-add-objectclass.ldif
+  register: oc_apply
+  failed_when: oc_apply.rc != 0 and 'Type or value exists' not in oc_apply.stderr
+  changed_when: "'modifying entry' in oc_apply.stdout"
+
+
+###############################################################################
+# Step 7: FINAL verification – attributes + objectClass must be visible
+###############################################################################
+- name: Verify innspark custom attributes and objectClass are present
+  become: true
+  shell: |
+    ldapsearch -Y EXTERNAL -H ldapi:/// \
+      -b "cn={4}innspark-custom,cn=schema,cn=config" \
+      olcAttributeTypes olcObjectClasses | \
+      grep -E "(innsparkUser|accountID|accountStatus|billingAddress|department|documentType|domain|groups|gstOrPanNumber|imageUrl|isEmailValid|isUserInGroup|lastLoginAt|lastLoginIp|lastLoginTime|loginStatus|loginType|mainOU|memberOfGroup|memberOfRole|mfaEnabled|mfaType|oneTimePassword|otpTime|ouDomainName|ouSharedWith|ouSharingStatus|passwordChangedAt|passwordResetRequired|projectID|projectMember|projectMemberOf|projects|purpose|remoteidAccountID|remoteProjectID|status|txtRecord|txtRecordStatus|userImage|userType|zone)"
+  args:
+    executable: /bin/bash
+  register: final_schema_verify
+  changed_when: false
+  failed_when: final_schema_verify.rc != 0
+
+###############################################################################
+# Step 8: Print all namingContexts (domains)
+###############################################################################
+- name: Fetch all LDAP namingContexts
+  command: ldapsearch -x -H ldap://localhost:389 -b "" -s base namingContexts
+  register: naming_contexts
+  changed_when: false
+
+- name: DEBUG | All LDAP domains (namingContexts)
+  debug:
+    msg: "{{ naming_contexts.stdout_lines }}"
+
+###############################################################################
+# Step 9: Print all attributes added in innspark-custom schema
+###############################################################################
+- name: Fetch all attributes from innspark-custom schema
+  become: true
+  command: >
+    ldapsearch -Y EXTERNAL -H ldapi:///
+    -b "cn={4}innspark-custom,cn=schema,cn=config"
+    -s base olcAttributeTypes
+  register: schema_attributes
+  changed_when: false
+
+- name: DEBUG | All innspark-custom attributes
+  debug:
+    msg: "{{ schema_attributes.stdout_lines }}"
+
+
+###############################################################################
+# Optional: Print only attribute names
+###############################################################################
+- name: List innspark-custom attribute names only
+  become: true
+  shell: |
+    ldapsearch -Y EXTERNAL -H ldapi:/// \
+      -b "cn={4}innspark-custom,cn=schema,cn=config" \
+      -s base olcAttributeTypes | \
+      grep "NAME"
+  args:
+    executable: /bin/bash
+  register: schema_attr_names
+  changed_when: false
+
+- name: DEBUG | innspark-custom attribute names
+  debug:
+    msg: "{{ schema_attr_names.stdout_lines }}"

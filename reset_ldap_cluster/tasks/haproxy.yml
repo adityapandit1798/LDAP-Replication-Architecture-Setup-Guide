@@ -1,0 +1,72 @@
+---
+# -------------------------------------------------
+# Stop and disable HAProxy
+# -------------------------------------------------
+- name: Stop haproxy service
+  systemd:
+    name: haproxy
+    state: stopped
+  ignore_errors: true
+
+- name: Disable haproxy auto-start
+  systemd:
+    name: haproxy
+    enabled: false
+  ignore_errors: true
+
+# -------------------------------------------------
+# Remove HAProxy package
+# -------------------------------------------------
+- name: Uninstall haproxy package
+  apt:
+    name: haproxy
+    state: absent
+    purge: true
+    autoremove: true
+  ignore_errors: true
+
+# -------------------------------------------------
+# Remove HAProxy configuration and data
+# -------------------------------------------------
+- name: Remove haproxy config directory
+  file:
+    path: /etc/haproxy
+    state: absent
+
+- name: Remove haproxy state directory
+  file:
+    path: /var/lib/haproxy
+    state: absent
+
+- name: Remove haproxy runtime directory
+  file:
+    path: /run/haproxy
+    state: absent
+
+- name: Remove haproxy log directory
+  file:
+    path: /var/log/haproxy
+    state: absent
+
+# -------------------------------------------------
+# Reload systemd to forget haproxy
+# -------------------------------------------------
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: true
+
+# -------------------------------------------------
+# Verification (soft)
+# -------------------------------------------------
+- name: Verify haproxy binary is absent
+  command: which haproxy
+  register: haproxy_check
+  failed_when: false
+  changed_when: false
+
+- name: Assert haproxy is removed
+  assert:
+    that:
+      - haproxy_check.rc != 0
+    success_msg: "HAProxy successfully removed from node"
+    fail_msg: "haproxy binary still present on node"

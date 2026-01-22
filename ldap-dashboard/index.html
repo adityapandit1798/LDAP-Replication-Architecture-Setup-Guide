@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LDAP Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>LDAP Dashboard</h1>
+            <p>Monitor and manage your LDAP cluster</p>
+        </header>
+
+        <main>
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <h3>Ansible Status</h3>
+                    <div class="stat-value" id="active-users">-</div>
+                    <div class="stat-label">Current job status</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Running Jobs</h3>
+                    <div class="stat-value" id="domain-count">-</div>
+                    <div class="stat-label">Active job count</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Server Status</h3>
+                    <div class="stat-value" id="server-status">-</div>
+                    <div class="stat-label">API health check</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Completed Jobs</h3>
+                    <div class="stat-value" id="last-sync">-</div>
+                    <div class="stat-label">Successful jobs</div>
+                </div>
+            </section>
+
+            <section class="actions-section">
+                <h2>LDAP Operations</h2>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="refreshData()">Refresh Data</button>
+                    <button class="btn btn-secondary" onclick="testConnection()">Test Connection</button>
+                    <button class="btn btn-info" onclick="showLogs()">View Job Logs</button>
+                </div>
+            </section>
+
+            <section class="actions-section">
+                <h2>Domain Management</h2>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="installLDAP()">Install LDAP</button>
+                    <button class="btn btn-secondary" onclick="addDomain()">Add Domain</button>
+                    <button class="btn btn-warning" onclick="resetLDAP()">Reset LDAP</button>
+                </div>
+            </section>
+
+            <section class="logs-section">
+                <h2>Activity Log</h2>
+                <div class="log-container">
+                    <div id="log-output" class="log-content">
+                        <div class="log-entry">Dashboard initialized. Click "Refresh Data" to fetch latest information.</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

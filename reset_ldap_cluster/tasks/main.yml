@@ -1,0 +1,28 @@
+---
+# -------------------------------------------------
+# Reset LDAP nodes
+# -------------------------------------------------
+- name: Reset LDAP nodes
+  include_tasks: ldap.yml
+  when: inventory_hostname in groups['ldap_nodes']
+
+# -------------------------------------------------
+# Reset HAProxy nodes
+# -------------------------------------------------
+- name: Reset HAProxy nodes
+  include_tasks: haproxy.yml
+  when: inventory_hostname in groups['haproxy']
+
+# -------------------------------------------------
+# Verify LDAP reset
+# -------------------------------------------------
+- name: Verify LDAP reset
+  include_tasks: verify.yml
+  when: inventory_hostname in groups['ldap_nodes']
+
+# -------------------------------------------------
+# Verify HAProxy reset
+# -------------------------------------------------
+- name: Verify HAProxy reset
+  include_tasks: verify.yml
+  when: inventory_hostname in groups['haproxy']

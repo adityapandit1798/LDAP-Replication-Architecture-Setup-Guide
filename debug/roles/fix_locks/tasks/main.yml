@@ -1,0 +1,94 @@
+---
+- name: Kill any stuck apt/dpkg processes (safe)
+  shell: |
+    ps -ef | grep '[a]pt-get\|[d]pkg' | awk '{print $2}' | xargs -r kill -9
+  become: yes
+  ignore_errors: yes
+  tags: fix_locks
+
+- name: Wait for dpkg and debconf locks to be released
+  shell: |
+    for i in $(seq 1 {{ lock_wait_retries }}); do
+      if ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 \
+         && ! fuser /var/lib/dpkg/lock >/dev/null 2>&1 \
+         && ! fuser /var/cache/debconf/config.dat >/dev/null 2>&1; then
+        exit 0
+      fi
+      sleep {{ lock_wait_interval }}
+    done
+    echo "Locks are still held after {{ lock_wait_retries * lock_wait_interval }} seconds!"
+    exit 1
+  become: yes
+  tags: fix_locks
+
+- name: Add Google DNS (8.8.8.8) to /etc/resolv.conf
+  lineinfile:
+    path: /etc/resolv.conf
+    line: "nameserver 8.8.8.8"
+    create: yes
+  become: yes
+  tags: fix_locks
+
+- name: Fix interrupted dpkg packages
+  shell: dpkg --configure -a
+  become: yes
+  ignore_errors: yes
+  tags: fix_locks
+
+- name: Fix broken dependencies automatically
+  shell: apt-get install -f -y
+  become: yes
+  ignore_errors: yes
+  tags: fix_locks
+
+- name: Reinstall systemd to fix broken dependencies
+  apt:
+    name: systemd
+    state: present
+    force: yes
+  become: yes
+  ignore_errors: yes
+  tags: fix_locks
+
+- name: Retry configuring packages after reinstalling systemd
+  shell: dpkg --configure -a
+  become: yes
+  ignore_errors: yes
+  tags: fix_locks
+
+- name: Fix broken dependencies again
+  shell: apt-get install -f -y
+  become: yes
+  ignore_errors: yes
+  tags: fix_locks
+
+- name: Reinstall open-iscsi to fix bad inconsistent state
+  apt:
+    name: open-iscsi
+    state: present
+    force: yes
+  become: yes
+  ignore_errors: yes
+  tags: fix_locks
+
+- name: Retry configuring packages after reinstalling open-iscsi
+  shell: dpkg --configure -a
+  become: yes
+  ignore_errors: yes
+  tags: fix_locks
+
+- name: Fix broken dependencies automatically after open-iscsi reinstallation
+  shell: apt-get install -f -y
+  become: yes
+  ignore_errors: yes
+  tags: fix_locks
+
+- name: Clean up unnecessary packages and dependencies
+  apt:
+    autoremove: yes
+    autoclean: yes
+  become: yes
+  ignore_errors: yes
+  tags: fix_locks
+
+

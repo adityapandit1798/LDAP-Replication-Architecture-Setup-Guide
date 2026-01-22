@@ -1,0 +1,89 @@
+---
+# -------------------------------------------------
+# Stop and disable LDAP
+# -------------------------------------------------
+- name: Stop slapd service
+  systemd:
+    name: slapd
+    state: stopped
+  ignore_errors: true
+
+- name: Disable slapd auto-start
+  systemd:
+    name: slapd
+    enabled: false
+  ignore_errors: true
+
+# -------------------------------------------------
+# Fully purge slapd and reset debconf state
+# -------------------------------------------------
+- name: Purge LDAP packages completely
+  apt:
+    name:
+      - slapd
+      - ldap-utils
+    state: absent
+    purge: true
+    autoremove: true
+  ignore_errors: true
+
+- name: Reset slapd debconf database (critical for clean re-install)
+  command: echo PURGE | debconf-communicate slapd
+  ignore_errors: true
+
+# -------------------------------------------------
+# Remove ALL LDAP state
+# -------------------------------------------------
+- name: Remove LDAP data directory
+  file:
+    path: /var/lib/ldap
+    state: absent
+
+- name: Remove LDAP configuration directory
+  file:
+    path: /etc/ldap
+    state: absent
+
+- name: Remove slapd runtime directories
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /run/slapd
+    - /var/run/slapd
+
+- name: Remove slapd defaults and logs
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/default/slapd
+    - /var/log/slapd.log
+    - /var/log/ldap.log
+
+# -------------------------------------------------
+# Reload systemd and flush caches
+# -------------------------------------------------
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: true
+
+- name: Clear apt cache (optional but clean)
+  command: apt clean
+  ignore_errors: true
+
+# -------------------------------------------------
+# Verification
+# -------------------------------------------------
+- name: Verify slapd binary is absent
+  command: which slapd
+  register: slapd_check
+  failed_when: false
+  changed_when: false
+
+- name: Assert slapd is fully removed
+  assert:
+    that:
+      - slapd_check.rc != 0
+    success_msg: "LDAP successfully removed from node"
+    fail_msg: "slapd binary still present on node"

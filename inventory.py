@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/home/ansible-ldap/mysql-venv/bin/python
 
 import json
 import mysql.connector

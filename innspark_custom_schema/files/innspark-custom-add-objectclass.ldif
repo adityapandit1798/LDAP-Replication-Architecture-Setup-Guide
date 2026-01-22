@@ -1,0 +1,5 @@
+dn: cn={4}innspark-custom,cn=schema,cn=config
+changetype: modify
+add: olcObjectClasses
+olcObjectClasses: ( 1.3.6.1.4.1.99999.2.1 NAME 'innsparkUser' DESC 'Auxiliary class for Innspark users' SUP top AUXILIARY MAY ( accountID $ accountStatus $ billingAddress $ gstOrPanNumber $ status $ domain $ projects $ projectID $ remoteProjectID $ purpose $ department $ documentType $ imageUrl $ userImage $ userType $ isUserInGroup $ isEmailValid $ oneTimePassword $ otpTime $ lastLoginTime $ lastLoginIp $ loginType $ loginStatus $ mainOU $ memberOfGroup $ memberOfRole $ lockReason $ mfaEnabled $ mfaType $ ouDomainName $ ouSharedWith $ ouSharingStatus $ passwordChangedAt $ passwordResetRequired $ txtRecord $ txtRecordStatus $ zone ) )
+-

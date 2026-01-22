@@ -1,0 +1,8 @@
+---
+- name: Phase 1 – Stop LDAP and HAProxy services
+  hosts: all
+  become: true
+
+  roles:
+    - reset_ldap_cluster
+

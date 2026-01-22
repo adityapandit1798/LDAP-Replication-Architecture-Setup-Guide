@@ -1,0 +1,6 @@
+---
+# Time (in seconds) to wait between lock checks
+lock_wait_interval: 2
+
+# Number of retries to wait for locks
+lock_wait_retries: 30

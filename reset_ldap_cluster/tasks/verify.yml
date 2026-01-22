@@ -1,0 +1,58 @@
+---
+# =================================================
+# LDAP VERIFICATION
+# =================================================
+
+- name: Verify slapd is not running
+  shell: systemctl is-active slapd || true
+  register: slapd_active
+  failed_when: slapd_active.stdout == "active"
+  changed_when: false
+  when: inventory_hostname in groups['ldap_nodes']
+
+- name: Verify slapd is not enabled (or not installed)
+  shell: systemctl is-enabled slapd || true
+  register: slapd_enabled
+  failed_when: slapd_enabled.stdout == "enabled"
+  changed_when: false
+  when: inventory_hostname in groups['ldap_nodes']
+
+- name: Verify LDAP data directory removed
+  stat:
+    path: /var/lib/ldap
+  register: ldap_data_dir
+  failed_when: ldap_data_dir.stat.exists
+  when: inventory_hostname in groups['ldap_nodes']
+
+- name: Verify LDAP config directory removed
+  stat:
+    path: /etc/ldap/slapd.d
+  register: ldap_config_dir
+  failed_when: ldap_config_dir.stat.exists
+  when: inventory_hostname in groups['ldap_nodes']
+
+
+# =================================================
+# HAPROXY VERIFICATION
+# =================================================
+
+- name: Verify haproxy is not running
+  shell: systemctl is-active haproxy || true
+  register: haproxy_active
+  failed_when: haproxy_active.stdout == "active"
+  changed_when: false
+  when: inventory_hostname in groups['haproxy']
+
+- name: Verify haproxy is not enabled (or not installed)
+  shell: systemctl is-enabled haproxy || true
+  register: haproxy_enabled
+  failed_when: haproxy_enabled.stdout == "enabled"
+  changed_when: false
+  when: inventory_hostname in groups['haproxy']
+
+- name: Verify haproxy config directory removed
+  stat:
+    path: /etc/haproxy
+  register: haproxy_config_dir
+  failed_when: haproxy_config_dir.stat.exists
+  when: inventory_hostname in groups['haproxy']
