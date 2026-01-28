@@ -1,0 +1,4 @@
+dn: ou=users,dc=innspark,dc=in
+objectClass: top
+objectClass: organizationalUnit
+ou: users

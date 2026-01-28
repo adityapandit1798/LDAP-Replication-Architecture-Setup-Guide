@@ -200,3 +200,94 @@
 - name: DEBUG | innspark-custom attribute names
   debug:
     msg: "{{ schema_attr_names.stdout_lines }}"
+
+
+
+
+
+
+
+
+###############################################################################
+# Add a test entry using the new schema to verify functionality
+###############################################################################
+
+- name: Copy users OU LDIF
+  copy:
+    src: innspark-users-ou.ldif
+    dest: /tmp/innspark-users-ou.ldif
+    mode: '0644'
+
+
+- name: Copy test entry LDIF
+  copy:
+    src: innspark-test-entry.ldif
+    dest: /tmp/innspark-test-entry.ldif
+    mode: '0644'
+
+
+###############################################################################
+# Create ou=users first (write node only)
+###############################################################################
+- name: Create ou=users (write node only)
+  command: >
+    ldapadd -x
+    -H ldap://localhost:389
+    -D "cn=admin,dc=innspark,dc=in"
+    -w "password"
+    -f /tmp/innspark-users-ou.ldif
+  register: add_users_ou
+  failed_when: add_users_ou.rc not in [0, 68]
+  changed_when: "'adding new entry' in add_users_ou.stdout"
+  run_once: true
+  delegate_to: pune-m1
+
+
+- name: DEBUG | users OU add output
+  debug:
+    var: add_users_ou
+
+
+###############################################################################
+# Add test LDAP entry (write node only)
+###############################################################################
+- name: Add test LDAP entry with innsparkUser attributes (write node only)
+  command: >
+    ldapadd -x
+    -H ldap://localhost:389
+    -D "cn=admin,dc=innspark,dc=in"
+    -w "password"
+    -f /tmp/innspark-test-entry.ldif
+  register: add_test_entry
+  failed_when: add_test_entry.rc != 0
+  changed_when: "'adding new entry' in add_test_entry.stdout"
+  run_once: true
+  delegate_to: pune-m1
+
+
+- name: DEBUG | Test entry add output
+  debug:
+    var: add_test_entry
+
+
+###############################################################################
+# Verify replication on all other nodes
+###############################################################################
+- name: Verify test entry attributes on all nodes (wait for replication)
+  command: >
+    ldapsearch -x
+    -H ldap://localhost:389
+    -b "cn=something1,ou=users,dc=innspark,dc=in"
+  register: verify_entry
+  retries: 12
+  delay: 5
+  until:
+    - verify_entry.rc == 0
+    - "'cn: something1' in verify_entry.stdout"
+  changed_when: false
+  when: inventory_hostname != 'pune-m1'
+
+
+- name: DEBUG | Verify test entry output
+  debug:
+    var: verify_entry.stdout_lines

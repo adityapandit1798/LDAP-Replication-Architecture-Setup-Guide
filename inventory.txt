@@ -1,0 +1,218 @@
+{
+  "_meta": {
+    "hostvars": {
+      "pune-m1": {
+        "ldap_host": "192.168.192.163",
+        "region": "pune",
+        "is_ldap": true,
+        "is_writer": true,
+        "is_reader": false,
+        "is_bootstrap": true,
+        "server_id": 1,
+        "public_ip": "192.168.50.19",
+        "ansible_host": "192.168.192.163",
+        "ansible_user": "sysadmin"
+      },
+      "pune-m2": {
+        "ldap_host": "192.168.192.164",
+        "region": "pune",
+        "is_ldap": true,
+        "is_writer": true,
+        "is_reader": false,
+        "is_bootstrap": false,
+        "server_id": 2,
+        "public_ip": "192.168.50.20",
+        "ansible_host": "192.168.192.164",
+        "ansible_user": "sysadmin"
+      },
+      "mumbai-m1": {
+        "ldap_host": "192.168.50.22",
+        "region": "mumbai",
+        "is_ldap": true,
+        "is_writer": true,
+        "is_reader": false,
+        "is_bootstrap": false,
+        "server_id": 3,
+        "public_ip": "192.168.50.22"
+      },
+      "mumbai-m2": {
+        "ldap_host": "192.168.50.23",
+        "region": "mumbai",
+        "is_ldap": true,
+        "is_writer": true,
+        "is_reader": false,
+        "is_bootstrap": false,
+        "server_id": 4,
+        "public_ip": "192.168.50.23"
+      },
+      "pune-r1": {
+        "ldap_host": "192.168.192.165",
+        "region": "pune",
+        "is_ldap": true,
+        "is_writer": false,
+        "is_reader": true,
+        "is_bootstrap": false,
+        "server_id": 0,
+        "ansible_host": "192.168.192.165",
+        "ansible_user": "sysadmin"
+      },
+      "pune-r2": {
+        "ldap_host": "192.168.192.166",
+        "region": "pune",
+        "is_ldap": true,
+        "is_writer": false,
+        "is_reader": true,
+        "is_bootstrap": false,
+        "server_id": 0,
+        "ansible_host": "192.168.192.166",
+        "ansible_user": "sysadmin"
+      },
+      "pune-r3": {
+        "ldap_host": "192.168.192.167",
+        "region": "pune",
+        "is_ldap": true,
+        "is_writer": false,
+        "is_reader": true,
+        "is_bootstrap": false,
+        "server_id": 0,
+        "ansible_host": "192.168.192.167",
+        "ansible_user": "sysadmin"
+      },
+      "pune-r4": {
+        "ldap_host": "192.168.192.170",
+        "region": "pune",
+        "is_ldap": true,
+        "is_writer": false,
+        "is_reader": true,
+        "is_bootstrap": false,
+        "server_id": 0,
+        "ansible_host": "192.168.192.170",
+        "ansible_user": "sysadmin"
+      },
+      "mumbai-r1": {
+        "ldap_host": "10.10.10.8",
+        "region": "mumbai",
+        "is_ldap": true,
+        "is_writer": false,
+        "is_reader": true,
+        "is_bootstrap": false,
+        "server_id": 0
+      },
+      "mumbai-r2": {
+        "ldap_host": "10.10.10.9",
+        "region": "mumbai",
+        "is_ldap": true,
+        "is_writer": false,
+        "is_reader": true,
+        "is_bootstrap": false,
+        "server_id": 0
+      },
+      "mumbai-r3": {
+        "ldap_host": "10.10.10.10",
+        "region": "mumbai",
+        "is_ldap": true,
+        "is_writer": false,
+        "is_reader": true,
+        "is_bootstrap": false,
+        "server_id": 0
+      },
+      "mumbai-r4": {
+        "ldap_host": "10.10.10.11",
+        "region": "mumbai",
+        "is_ldap": true,
+        "is_writer": false,
+        "is_reader": true,
+        "is_bootstrap": false,
+        "server_id": 0
+      },
+      "pune-haproxy": {
+        "region": "pune",
+        "is_haproxy": true,
+        "private_ip": "192.168.192.162",
+        "public_ip": "192.168.50.18",
+        "ansible_host": "192.168.192.162",
+        "ansible_user": "sysadmin"
+      },
+      "mumbai-haproxy": {
+        "region": "mumbai",
+        "is_haproxy": true,
+        "private_ip": "10.10.10.5",
+        "public_ip": "192.168.50.21"
+      }
+    }
+  },
+  "all": {
+    "children": [
+      "writers",
+      "readers",
+      "ldap_nodes",
+      "haproxy",
+      "pune",
+      "mumbai"
+    ]
+  },
+  "writers": {
+    "hosts": [
+      "pune-m1",
+      "pune-m2",
+      "mumbai-m1",
+      "mumbai-m2"
+    ]
+  },
+  "readers": {
+    "hosts": [
+      "pune-r1",
+      "pune-r2",
+      "pune-r3",
+      "pune-r4",
+      "mumbai-r1",
+      "mumbai-r2",
+      "mumbai-r3",
+      "mumbai-r4"
+    ]
+  },
+  "ldap_nodes": {
+    "hosts": [
+      "pune-m1",
+      "pune-m2",
+      "mumbai-m1",
+      "mumbai-m2",
+      "pune-r1",
+      "pune-r2",
+      "pune-r3",
+      "pune-r4",
+      "mumbai-r1",
+      "mumbai-r2",
+      "mumbai-r3",
+      "mumbai-r4"
+    ]
+  },
+  "haproxy": {
+    "hosts": [
+      "pune-haproxy",
+      "mumbai-haproxy"
+    ]
+  },
+  "pune": {
+    "hosts": [
+      "pune-m1",
+      "pune-m2",
+      "pune-r1",
+      "pune-r2",
+      "pune-r3",
+      "pune-r4",
+      "pune-haproxy"
+    ]
+  },
+  "mumbai": {
+    "hosts": [
+      "mumbai-m1",
+      "mumbai-m2",
+      "mumbai-r1",
+      "mumbai-r2",
+      "mumbai-r3",
+      "mumbai-r4",
+      "mumbai-haproxy"
+    ]
+  }
+}

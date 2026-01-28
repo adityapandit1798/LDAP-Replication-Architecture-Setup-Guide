@@ -1,0 +1,45 @@
+dn: cn=something1,ou=users,dc=innspark,dc=in
+objectClass: top
+objectClass: organizationalRole
+objectClass: innsparkUser
+
+cn: something1
+uid: something1
+
+accountID: ACC-001
+accountStatus: active
+billingAddress: Pune, India
+gstOrPanNumber: ABCDE1234F
+isUserInGroup: TRUE
+isEmailValid: TRUE
+oneTimePassword: 123456
+otpTime: 20260121120000Z
+userType: internal
+mainOU: ou=users,dc=innspark,dc=in
+memberOfRole: cn=admin,ou=roles,dc=innspark,dc=in
+memberOfGroup: cn=engineering,ou=groups,dc=innspark,dc=in
+purpose: schema-validation
+projectID: PROJ-001
+remoteProjectID: RPROJ-001
+projects: cn=project1,ou=projects,dc=innspark,dc=in
+domain: innspark.in
+department: engineering
+documentType: aadhaar
+imageUrl: https://example.com/profile.jpg
+userImage: https://example.com/user.jpg
+lockReason: none
+mfaEnabled: TRUE
+mfaType: totp
+ouDomainName: innspark.in
+ouSharedWith: ops
+ouSharingStatus: enabled
+passwordChangedAt: 20260120103000Z
+passwordResetRequired: FALSE
+txtRecord: test-txt
+txtRecordStatus: active
+status: enabled
+lastLoginTime: 20260121100000Z
+lastLoginIp: 10.10.10.10
+loginType: password
+loginStatus: success
+zone: ap-south-1
