@@ -92,6 +92,54 @@
 
 ###############################################################################
 
+- name: DEBUG - Show local masters for {{ inventory_hostname }}
+  debug:
+    msg:
+      - "Reader: {{ inventory_hostname }}"
+      - "Region: {{ region }}"
+      - "Local masters found: {{ local_masters | length }}"
+      - "Master details:"
+      - "{{ local_masters | map('combine', {'ldap_host': hostvars[inventory_hostname].ldap_host}) | list }}"
+  when: is_reader | bool
+
+- name: DEBUG - Verify master connectivity from reader
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    echo "=== Testing connectivity to masters ==="
+    {% for master in local_masters %}
+    echo "Testing {{ master.ldap_host }}:389..."
+    timeout 5 bash -c "</dev/tcp/{{ master.ldap_host }}/389" && echo "SUCCESS" || echo "FAILED"
+    {% endfor %}
+  args:
+    executable: /bin/bash
+  register: connectivity_test
+  changed_when: false
+  when: is_reader | bool
+
+- name: DEBUG - Show connectivity results
+  debug:
+    msg: "{{ connectivity_test.stdout_lines }}"
+  when: is_reader | bool
+
+- name: DEBUG - Show current syncrepl configuration
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    ldapsearch -Y EXTERNAL -H ldapi:/// -b "olcDatabase={1}mdb,cn=config" olcSyncrepl
+  args:
+    executable: /bin/bash
+  register: current_syncrepl
+  changed_when: false
+  when: is_reader | bool
+
+- name: DEBUG - Current syncrepl entries
+  debug:
+    msg: "{{ current_syncrepl.stdout_lines }}"
+  when: is_reader | bool
+
+###############################################################################
+
 - name: Configure syncrepl from local masters (safe LDIF)
   become: true
   shell: |
@@ -101,7 +149,7 @@
     changetype: modify
     {% for master in local_masters %}
     add: olcSyncrepl
-    olcSyncrepl: rid={{ '%03d' | format(loop.index) }} provider=ldap://{{ master.ansible_host | default(master.inventory_hostname) }}:389 bindmethod=simple binddn="cn=replicator,{{ ldap_suffix }}" credentials={{ ldap_admin_password }} searchbase="{{ ldap_suffix }}" schemachecking=on type=refreshAndPersist retry="60 +"
+    olcSyncrepl: rid={{ '%03d' | format(loop.index) }} provider=ldap://{{ master.ldap_host }}:389 bindmethod=simple binddn="cn=replicator,{{ ldap_suffix }}" credentials={{ ldap_admin_password }} searchbase="{{ ldap_suffix }}" schemachecking=on type=refreshAndPersist retry="60 +"
     {% if not loop.last %}
     -
     {% endif %}
@@ -112,6 +160,51 @@
   register: syncrepl_result
   failed_when: syncrepl_result.rc not in [0, 20]
   changed_when: syncrepl_result.rc == 0
+  when: is_reader | bool
+
+- name: DEBUG - Show syncrepl configuration result
+  debug:
+    msg:
+      - "Return code: {{ syncrepl_result.rc }}"
+      - "STDOUT: {{ syncrepl_result.stdout_lines }}"
+      - "STDERR: {{ syncrepl_result.stderr_lines }}"
+  when: is_reader | bool
+
+- name: DEBUG - Verify new syncrepl configuration
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    echo "=== New syncrepl configuration ==="
+    ldapsearch -Y EXTERNAL -H ldapi:/// -b "olcDatabase={1}mdb,cn=config" olcSyncrepl
+  args:
+    executable: /bin/bash
+  register: new_syncrepl
+  changed_when: false
+  when: is_reader | bool
+
+- name: DEBUG - New syncrepl entries
+  debug:
+    msg: "{{ new_syncrepl.stdout_lines }}"
+  when: is_reader | bool
+
+- name: DEBUG - Test replicator authentication
+  become: true
+  shell: |
+    export PATH=/usr/sbin:/sbin:/usr/bin:/bin:$PATH
+    echo "=== Testing replicator authentication ==="
+    {% for master in local_masters %}
+    echo "Testing replicator login to {{ master.ldap_host }}..."
+    ldapsearch -x -H ldap://{{ master.ldap_host }}:389 -D "cn=replicator,{{ ldap_suffix }}" -w "{{ ldap_admin_password }}" -b "{{ ldap_suffix }}" "(objectClass=*)" dn | head -5
+    {% endfor %}
+  args:
+    executable: /bin/bash
+  register: auth_test
+  changed_when: false
+  when: is_reader | bool
+
+- name: DEBUG - Authentication results
+  debug:
+    msg: "{{ auth_test.stdout_lines }}"
   when: is_reader | bool
 
 ###############################################################################

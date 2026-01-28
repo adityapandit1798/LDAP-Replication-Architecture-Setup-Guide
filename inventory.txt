@@ -26,23 +26,25 @@
         "ansible_user": "sysadmin"
       },
       "mumbai-m1": {
-        "ldap_host": "192.168.50.22",
+        "ldap_host": "10.10.10.6",
         "region": "mumbai",
         "is_ldap": true,
         "is_writer": true,
         "is_reader": false,
         "is_bootstrap": false,
         "server_id": 3,
+        "public_ldap_host": "192.168.50.22",
         "public_ip": "192.168.50.22"
       },
       "mumbai-m2": {
-        "ldap_host": "192.168.50.23",
+        "ldap_host": "10.10.10.7",
         "region": "mumbai",
         "is_ldap": true,
         "is_writer": true,
         "is_reader": false,
         "is_bootstrap": false,
         "server_id": 4,
+        "public_ldap_host": "192.168.50.23",
         "public_ip": "192.168.50.23"
       },
       "pune-r1": {

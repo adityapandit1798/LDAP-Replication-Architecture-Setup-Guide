@@ -91,6 +91,18 @@ def main():
                 "server_id": int(row["server_id"]),
             }
 
+            # For Mumbai masters, use private IP for intra-region replication
+            if row["is_writer"] and region == "mumbai":
+                # Map Mumbai masters to private IPs for reader connectivity
+                MUMBAI_MASTER_PRIVATE_MAP = {
+                    "mumbai-m1": "10.10.10.6",
+                    "mumbai-m2": "10.10.10.7",
+                }
+                private_ldap_host = MUMBAI_MASTER_PRIVATE_MAP.get(hostname)
+                if private_ldap_host:
+                    hostvars["ldap_host"] = private_ldap_host
+                    hostvars["public_ldap_host"] = row["ldap_host"]  # Keep original as public
+
             if row["is_writer"]:
                 # Add public IP for cross-region sync
                 PUBLIC_IP_MAP = {
@@ -100,6 +112,10 @@ def main():
                     "mumbai-m2": "192.168.50.23",
                 }
                 hostvars["public_ip"] = PUBLIC_IP_MAP.get(hostname)
+                
+                # For cross-region replication, use public IP if Mumbai master
+                if region == "mumbai":
+                    hostvars["public_ldap_host"] = row["ldap_host"]  # Use original public IP for cross-region
 
 
             # Pune → direct SSH using private IP
