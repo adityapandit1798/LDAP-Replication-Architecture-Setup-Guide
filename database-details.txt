@@ -1,0 +1,84 @@
+
+mysql> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| ldap_automation    |
+| performance_schema |
++--------------------+
+3 rows in set (0.00 sec)
+
+mysql> use ldap_automation;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Database changed
+mysql> show tables;
++---------------------------+
+| Tables_in_ldap_automation |
++---------------------------+
+| bastions                  |
+| domain_deployments        |
+| domains                   |
+| nodes                     |
+| replication_links         |
+| secrets                   |
++---------------------------+
+6 rows in set (0.00 sec)
+
+mysql> select *  from nodes;
++----+-----------+--------+--------+-----------------+-----------------+-----------+-----------+---------------------+--------------+-----------+
+| id | node_name | role   | region | ssh_host        | ldap_host       | is_writer | is_reader | created_at          | is_bootstrap | server_id |
++----+-----------+--------+--------+-----------------+-----------------+-----------+-----------+---------------------+--------------+-----------+
+|  1 | pune-m1   | master | pune   | 192.168.192.163 | 192.168.192.163 |         1 |         0 | 2025-12-15 05:15:56 |            1 |         1 |
+|  2 | pune-m2   | master | pune   | 192.168.192.164 | 192.168.192.164 |         1 |         0 | 2025-12-15 05:15:56 |            0 |         2 |
+|  3 | mumbai-m1 | master | mumbai | 10.10.10.6      | 192.168.50.22   |         1 |         0 | 2025-12-15 05:15:56 |            0 |         3 |
+|  4 | mumbai-m2 | master | mumbai | 10.10.10.7      | 192.168.50.23   |         1 |         0 | 2025-12-15 05:15:56 |            0 |         4 |
+|  5 | pune-r1   | read   | pune   | 192.168.192.165 | 192.168.192.165 |         0 |         1 | 2025-12-15 05:15:56 |            0 |         0 |
+|  6 | pune-r2   | read   | pune   | 192.168.192.166 | 192.168.192.166 |         0 |         1 | 2025-12-15 05:15:56 |            0 |         0 |
+|  7 | pune-r3   | read   | pune   | 192.168.192.167 | 192.168.192.167 |         0 |         1 | 2025-12-15 05:15:56 |            0 |         0 |
+|  8 | pune-r4   | read   | pune   | 192.168.192.170 | 192.168.192.170 |         0 |         1 | 2025-12-15 05:15:56 |            0 |         0 |
+|  9 | mumbai-r1 | read   | mumbai | 10.10.10.8      | 10.10.10.8      |         0 |         1 | 2025-12-15 05:15:56 |            0 |         0 |
+| 10 | mumbai-r2 | read   | mumbai | 10.10.10.9      | 10.10.10.9      |         0 |         1 | 2025-12-15 05:15:56 |            0 |         0 |
+| 11 | mumbai-r3 | read   | mumbai | 10.10.10.10     | 10.10.10.10     |         0 |         1 | 2025-12-15 05:15:56 |            0 |         0 |
+| 12 | mumbai-r4 | read   | mumbai | 10.10.10.11     | 10.10.10.11     |         0 |         1 | 2025-12-15 05:15:56 |            0 |         0 |
++----+-----------+--------+--------+-----------------+-----------------+-----------+-----------+---------------------+--------------+-----------+
+12 rows in set (0.00 sec)
+
+mysql> select *  from replication_links;
++----+-------------+-------------+-----+---------+
+| id | source_node | target_node | rid | enabled |
++----+-------------+-------------+-----+---------+
+|  1 | pune-m2     | pune-m1     |   2 |       1 |
+|  2 | mumbai-m1   | pune-m1     |   3 |       1 |
+|  3 | mumbai-m2   | pune-m1     |   4 |       1 |
+|  4 | pune-m1     | pune-m2     |   1 |       1 |
+|  5 | mumbai-m1   | pune-m2     |   3 |       1 |
+|  6 | mumbai-m2   | pune-m2     |   4 |       1 |
+|  7 | mumbai-m2   | mumbai-m1   |   1 |       1 |
+|  8 | pune-m1     | mumbai-m1   |   3 |       1 |
+|  9 | pune-m2     | mumbai-m1   |   4 |       1 |
+| 10 | mumbai-m1   | mumbai-m2   |   2 |       1 |
+| 11 | pune-m1     | mumbai-m2   |   3 |       1 |
+| 12 | pune-m2     | mumbai-m2   |   4 |       1 |
++----+-------------+-------------+-----+---------+
+12 rows in set (0.00 sec)
+
+mysql> select *  from domains;
+Empty set (0.00 sec)
+
+mysql> select *  from domain_deployments;
+Empty set (0.00 sec)
+
+mysql> select *  from bastions;
++----+-------------------+--------+---------------+----------+---------------------+
+| id | name              | region | ssh_host      | priority | created_at          |
++----+-------------------+--------+---------------+----------+---------------------+
+|  1 | mumbai-bastion-m1 | mumbai | 192.168.50.22 |        1 | 2025-12-26 10:53:23 |
+|  2 | mumbai-bastion-m2 | mumbai | 192.168.50.23 |        2 | 2025-12-26 10:53:23 |
++----+-------------------+--------+---------------+----------+---------------------+
+2 rows in set (0.01 sec)
+
+mysql> 
+

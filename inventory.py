@@ -6,7 +6,7 @@ import sys
 
 DB_CONFIG = {
     "user": "ldap_automation",
-    "password": "PASSWORD",
+    "password": "LdapAuto@2025!",
     "host": "localhost",
     "database": "ldap_automation",
 }

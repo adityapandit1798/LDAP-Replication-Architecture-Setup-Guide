@@ -127,6 +127,15 @@
         "is_bootstrap": false,
         "server_id": 0
       },
+      "mumbai-read-5": {
+        "ldap_host": "10.10.10.12",
+        "region": "mumbai",
+        "is_ldap": true,
+        "is_writer": false,
+        "is_reader": true,
+        "is_bootstrap": false,
+        "server_id": 0
+      },
       "pune-haproxy": {
         "region": "pune",
         "is_haproxy": true,
@@ -170,7 +179,8 @@
       "mumbai-r1",
       "mumbai-r2",
       "mumbai-r3",
-      "mumbai-r4"
+      "mumbai-r4",
+      "mumbai-read-5"
     ]
   },
   "ldap_nodes": {
@@ -186,7 +196,8 @@
       "mumbai-r1",
       "mumbai-r2",
       "mumbai-r3",
-      "mumbai-r4"
+      "mumbai-r4",
+      "mumbai-read-5"
     ]
   },
   "haproxy": {
@@ -214,6 +225,7 @@
       "mumbai-r2",
       "mumbai-r3",
       "mumbai-r4",
+      "mumbai-read-5",
       "mumbai-haproxy"
     ]
   }

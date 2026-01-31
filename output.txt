@@ -1,0 +1,500 @@
+
+TASK [ldap_cluster_new : Configure syncrepl from local masters (safe LDIF)] ****
+skipping: [pune-m1]
+skipping: [pune-m2]
+skipping: [mumbai-m1]
+skipping: [mumbai-m2]
+changed: [pune-r2]
+changed: [pune-r1]
+changed: [pune-r4]
+changed: [mumbai-r1]
+changed: [mumbai-r4]
+changed: [pune-r3]
+changed: [mumbai-r2]
+changed: [mumbai-r3]
+
+TASK [ldap_cluster_new : DEBUG - Show syncrepl configuration result] ***********
+skipping: [pune-m1]
+skipping: [pune-m2]
+skipping: [mumbai-m1]
+skipping: [mumbai-m2]
+ok: [pune-r1] => {
+    "msg": [
+        "Return code: 0",
+        "STDOUT: ['modifying entry \"olcDatabase={1}mdb,cn=config\"']",
+        "STDERR: ['SASL/EXTERNAL authentication started', 'SASL username: gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth', 'SASL SSF: 0']"
+    ]
+}
+ok: [pune-r2] => {
+    "msg": [
+        "Return code: 0",
+        "STDOUT: ['modifying entry \"olcDatabase={1}mdb,cn=config\"']",
+        "STDERR: ['SASL/EXTERNAL authentication started', 'SASL username: gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth', 'SASL SSF: 0']"
+    ]
+}
+ok: [pune-r3] => {
+    "msg": [
+        "Return code: 0",
+        "STDOUT: ['modifying entry \"olcDatabase={1}mdb,cn=config\"']",
+        "STDERR: ['SASL/EXTERNAL authentication started', 'SASL username: gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth', 'SASL SSF: 0']"
+    ]
+}
+ok: [pune-r4] => {
+    "msg": [
+        "Return code: 0",
+        "STDOUT: ['modifying entry \"olcDatabase={1}mdb,cn=config\"']",
+        "STDERR: ['SASL/EXTERNAL authentication started', 'SASL username: gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth', 'SASL SSF: 0']"
+    ]
+}
+ok: [mumbai-r1] => {
+    "msg": [
+        "Return code: 0",
+        "STDOUT: ['modifying entry \"olcDatabase={1}mdb,cn=config\"']",
+        "STDERR: ['SASL/EXTERNAL authentication started', 'SASL username: gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth', 'SASL SSF: 0']"
+    ]
+}
+ok: [mumbai-r2] => {
+    "msg": [
+        "Return code: 0",
+        "STDOUT: ['modifying entry \"olcDatabase={1}mdb,cn=config\"']",
+        "STDERR: ['SASL/EXTERNAL authentication started', 'SASL username: gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth', 'SASL SSF: 0']"
+    ]
+}
+ok: [mumbai-r3] => {
+    "msg": [
+        "Return code: 0",
+        "STDOUT: ['modifying entry \"olcDatabase={1}mdb,cn=config\"']",
+        "STDERR: ['SASL/EXTERNAL authentication started', 'SASL username: gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth', 'SASL SSF: 0']"
+    ]
+}
+ok: [mumbai-r4] => {
+    "msg": [
+        "Return code: 0",
+        "STDOUT: ['modifying entry \"olcDatabase={1}mdb,cn=config\"']",
+        "STDERR: ['SASL/EXTERNAL authentication started', 'SASL username: gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth', 'SASL SSF: 0']"
+    ]
+}
+
+TASK [ldap_cluster_new : DEBUG - Verify new syncrepl configuration] ************
+skipping: [pune-m1]
+skipping: [pune-m2]
+skipping: [mumbai-m1]
+skipping: [mumbai-m2]
+ok: [pune-r1]
+ok: [pune-r2]
+ok: [pune-r3]
+ok: [pune-r4]
+ok: [mumbai-r1]
+ok: [mumbai-r2]
+ok: [mumbai-r3]
+ok: [mumbai-r4]
+
+TASK [ldap_cluster_new : DEBUG - New syncrepl entries] *************************
+skipping: [pune-m1]
+skipping: [pune-m2]
+skipping: [mumbai-m1]
+skipping: [mumbai-m2]
+ok: [pune-r1] => {
+    "msg": [
+        "=== New syncrepl configuration ===",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <olcDatabase={1}mdb,cn=config> with scope subtree",
+        "# filter: (objectclass=*)",
+        "# requesting: olcSyncrepl ",
+        "#",
+        "",
+        "# {1}mdb, config",
+        "dn: olcDatabase={1}mdb,cn=config",
+        "olcSyncrepl: {0}rid=001 provider=ldap://192.168.192.163:389 bindmethod=simple ",
+        " binddn=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=",
+        " innspark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "olcSyncrepl: {1}rid=002 provider=ldap://192.168.192.164:389 bindmethod=simple ",
+        " binddn=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=",
+        " innspark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "",
+        "# {0}syncprov, {1}mdb, config",
+        "dn: olcOverlay={0}syncprov,olcDatabase={1}mdb,cn=config",
+        "",
+        "# search result",
+        "search: 2",
+        "result: 0 Success",
+        "",
+        "# numResponses: 3",
+        "# numEntries: 2"
+    ]
+}
+ok: [pune-r2] => {
+    "msg": [
+        "=== New syncrepl configuration ===",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <olcDatabase={1}mdb,cn=config> with scope subtree",
+        "# filter: (objectclass=*)",
+        "# requesting: olcSyncrepl ",
+        "#",
+        "",
+        "# {1}mdb, config",
+        "dn: olcDatabase={1}mdb,cn=config",
+        "olcSyncrepl: {0}rid=001 provider=ldap://192.168.192.163:389 bindmethod=simple ",
+        " binddn=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=",
+        " innspark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "olcSyncrepl: {1}rid=002 provider=ldap://192.168.192.164:389 bindmethod=simple ",
+        " binddn=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=",
+        " innspark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "",
+        "# {0}syncprov, {1}mdb, config",
+        "dn: olcOverlay={0}syncprov,olcDatabase={1}mdb,cn=config",
+        "",
+        "# search result",
+        "search: 2",
+        "result: 0 Success",
+        "",
+        "# numResponses: 3",
+        "# numEntries: 2"
+    ]
+}
+ok: [pune-r3] => {
+    "msg": [
+        "=== New syncrepl configuration ===",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <olcDatabase={1}mdb,cn=config> with scope subtree",
+        "# filter: (objectclass=*)",
+        "# requesting: olcSyncrepl ",
+        "#",
+        "",
+        "# {1}mdb, config",
+        "dn: olcDatabase={1}mdb,cn=config",
+        "olcSyncrepl: {0}rid=001 provider=ldap://192.168.192.163:389 bindmethod=simple ",
+        " binddn=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=",
+        " innspark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "olcSyncrepl: {1}rid=002 provider=ldap://192.168.192.164:389 bindmethod=simple ",
+        " binddn=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=",
+        " innspark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "",
+        "# {0}syncprov, {1}mdb, config",
+        "dn: olcOverlay={0}syncprov,olcDatabase={1}mdb,cn=config",
+        "",
+        "# search result",
+        "search: 2",
+        "result: 0 Success",
+        "",
+        "# numResponses: 3",
+        "# numEntries: 2"
+    ]
+}
+ok: [pune-r4] => {
+    "msg": [
+        "=== New syncrepl configuration ===",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <olcDatabase={1}mdb,cn=config> with scope subtree",
+        "# filter: (objectclass=*)",
+        "# requesting: olcSyncrepl ",
+        "#",
+        "",
+        "# {1}mdb, config",
+        "dn: olcDatabase={1}mdb,cn=config",
+        "olcSyncrepl: {0}rid=001 provider=ldap://192.168.192.163:389 bindmethod=simple ",
+        " binddn=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=",
+        " innspark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "olcSyncrepl: {1}rid=002 provider=ldap://192.168.192.164:389 bindmethod=simple ",
+        " binddn=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=",
+        " innspark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "",
+        "# {0}syncprov, {1}mdb, config",
+        "dn: olcOverlay={0}syncprov,olcDatabase={1}mdb,cn=config",
+        "",
+        "# search result",
+        "search: 2",
+        "result: 0 Success",
+        "",
+        "# numResponses: 3",
+        "# numEntries: 2"
+    ]
+}
+ok: [mumbai-r1] => {
+    "msg": [
+        "=== New syncrepl configuration ===",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <olcDatabase={1}mdb,cn=config> with scope subtree",
+        "# filter: (objectclass=*)",
+        "# requesting: olcSyncrepl ",
+        "#",
+        "",
+        "# {1}mdb, config",
+        "dn: olcDatabase={1}mdb,cn=config",
+        "olcSyncrepl: {0}rid=001 provider=ldap://10.10.10.6:389 bindmethod=simple bindd",
+        " n=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=innsp",
+        " ark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "olcSyncrepl: {1}rid=002 provider=ldap://10.10.10.7:389 bindmethod=simple bindd",
+        " n=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=innsp",
+        " ark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "",
+        "# {0}syncprov, {1}mdb, config",
+        "dn: olcOverlay={0}syncprov,olcDatabase={1}mdb,cn=config",
+        "",
+        "# search result",
+        "search: 2",
+        "result: 0 Success",
+        "",
+        "# numResponses: 3",
+        "# numEntries: 2"
+    ]
+}
+ok: [mumbai-r2] => {
+    "msg": [
+        "=== New syncrepl configuration ===",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <olcDatabase={1}mdb,cn=config> with scope subtree",
+        "# filter: (objectclass=*)",
+        "# requesting: olcSyncrepl ",
+        "#",
+        "",
+        "# {1}mdb, config",
+        "dn: olcDatabase={1}mdb,cn=config",
+        "olcSyncrepl: {0}rid=001 provider=ldap://10.10.10.6:389 bindmethod=simple bindd",
+        " n=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=innsp",
+        " ark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "olcSyncrepl: {1}rid=002 provider=ldap://10.10.10.7:389 bindmethod=simple bindd",
+        " n=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=innsp",
+        " ark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "",
+        "# {0}syncprov, {1}mdb, config",
+        "dn: olcOverlay={0}syncprov,olcDatabase={1}mdb,cn=config",
+        "",
+        "# search result",
+        "search: 2",
+        "result: 0 Success",
+        "",
+        "# numResponses: 3",
+        "# numEntries: 2"
+    ]
+}
+ok: [mumbai-r3] => {
+    "msg": [
+        "=== New syncrepl configuration ===",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <olcDatabase={1}mdb,cn=config> with scope subtree",
+        "# filter: (objectclass=*)",
+        "# requesting: olcSyncrepl ",
+        "#",
+        "",
+        "# {1}mdb, config",
+        "dn: olcDatabase={1}mdb,cn=config",
+        "olcSyncrepl: {0}rid=001 provider=ldap://10.10.10.6:389 bindmethod=simple bindd",
+        " n=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=innsp",
+        " ark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "olcSyncrepl: {1}rid=002 provider=ldap://10.10.10.7:389 bindmethod=simple bindd",
+        " n=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=innsp",
+        " ark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "",
+        "# {0}syncprov, {1}mdb, config",
+        "dn: olcOverlay={0}syncprov,olcDatabase={1}mdb,cn=config",
+        "",
+        "# search result",
+        "search: 2",
+        "result: 0 Success",
+        "",
+        "# numResponses: 3",
+        "# numEntries: 2"
+    ]
+}
+ok: [mumbai-r4] => {
+    "msg": [
+        "=== New syncrepl configuration ===",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <olcDatabase={1}mdb,cn=config> with scope subtree",
+        "# filter: (objectclass=*)",
+        "# requesting: olcSyncrepl ",
+        "#",
+        "",
+        "# {1}mdb, config",
+        "dn: olcDatabase={1}mdb,cn=config",
+        "olcSyncrepl: {0}rid=001 provider=ldap://10.10.10.6:389 bindmethod=simple bindd",
+        " n=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=innsp",
+        " ark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "olcSyncrepl: {1}rid=002 provider=ldap://10.10.10.7:389 bindmethod=simple bindd",
+        " n=\"cn=replicator,dc=innspark,dc=in\" credentials=password searchbase=\"dc=innsp",
+        " ark,dc=in\" schemachecking=on type=refreshAndPersist retry=\"60 +\"",
+        "",
+        "# {0}syncprov, {1}mdb, config",
+        "dn: olcOverlay={0}syncprov,olcDatabase={1}mdb,cn=config",
+        "",
+        "# search result",
+        "search: 2",
+        "result: 0 Success",
+        "",
+        "# numResponses: 3",
+        "# numEntries: 2"
+    ]
+}
+
+TASK [ldap_cluster_new : DEBUG - Test replicator authentication] ***************
+skipping: [pune-m1]
+skipping: [pune-m2]
+skipping: [mumbai-m1]
+skipping: [mumbai-m2]
+ok: [pune-r1]
+ok: [pune-r4]
+ok: [pune-r3]
+ok: [pune-r2]
+ok: [mumbai-r1]
+ok: [mumbai-r2]
+ok: [mumbai-r3]
+ok: [mumbai-r4]
+
+TASK [ldap_cluster_new : DEBUG - Authentication results] ***********************
+skipping: [pune-m1]
+skipping: [pune-m2]
+skipping: [mumbai-m1]
+skipping: [mumbai-m2]
+ok: [pune-r1] => {
+    "msg": [
+        "=== Testing replicator authentication ===",
+        "Testing replicator login to 192.168.192.163...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)",
+        "Testing replicator login to 192.168.192.164...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)"
+    ]
+}
+ok: [pune-r2] => {
+    "msg": [
+        "=== Testing replicator authentication ===",
+        "Testing replicator login to 192.168.192.163...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)",
+        "Testing replicator login to 192.168.192.164...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)"
+    ]
+}
+ok: [pune-r3] => {
+    "msg": [
+        "=== Testing replicator authentication ===",
+        "Testing replicator login to 192.168.192.163...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)",
+        "Testing replicator login to 192.168.192.164...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)"
+    ]
+}
+ok: [pune-r4] => {
+    "msg": [
+        "=== Testing replicator authentication ===",
+        "Testing replicator login to 192.168.192.163...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)",
+        "Testing replicator login to 192.168.192.164...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)"
+    ]
+}
+ok: [mumbai-r1] => {
+    "msg": [
+        "=== Testing replicator authentication ===",
+        "Testing replicator login to 10.10.10.6...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)",
+        "Testing replicator login to 10.10.10.7...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)"
+    ]
+}
+ok: [mumbai-r2] => {
+    "msg": [
+        "=== Testing replicator authentication ===",
+        "Testing replicator login to 10.10.10.6...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)",
+        "Testing replicator login to 10.10.10.7...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)"
+    ]
+}
+ok: [mumbai-r3] => {
+    "msg": [
+        "=== Testing replicator authentication ===",
+        "Testing replicator login to 10.10.10.6...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)",
+        "Testing replicator login to 10.10.10.7...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)"
+    ]
+}
+ok: [mumbai-r4] => {
+    "msg": [
+        "=== Testing replicator authentication ===",
+        "Testing replicator login to 10.10.10.6...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)",
+        "Testing replicator login to 10.10.10.7...",
+        "# extended LDIF",
+        "#",
+        "# LDAPv3",
+        "# base <dc=innspark,dc=in> with scope subtree",
+        "# filter: (objectClass=*)"
+    ]
+}

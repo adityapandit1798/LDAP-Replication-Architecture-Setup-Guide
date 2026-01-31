@@ -1,0 +1,70 @@
+# ============================
+# Mumbai Bastions
+# ============================
+
+Host mumbai-bastion-m1
+    HostName 192.168.50.22
+    User sysadmin
+    IdentityFile /home/ansible-ldap/.ssh/ansible_ldap
+    StrictHostKeyChecking no
+
+Host mumbai-bastion-m2
+    HostName 192.168.50.23
+    User sysadmin
+    IdentityFile /home/ansible-ldap/.ssh/ansible_ldap
+    StrictHostKeyChecking no
+
+
+# ============================
+# Mumbai Masters
+# ============================
+
+Host mumbai-m1
+    HostName 10.10.10.6
+    User sysadmin
+    IdentityFile /home/ansible-ldap/.ssh/ansible_ldap
+    ProxyJump mumbai-bastion-m1
+
+Host mumbai-m2
+    HostName 10.10.10.7
+    User sysadmin
+    IdentityFile /home/ansible-ldap/.ssh/ansible_ldap
+    ProxyJump mumbai-bastion-m1
+
+
+# ============================
+# Mumbai Readers
+# ============================
+
+Host mumbai-r1
+    HostName 10.10.10.8
+    User sysadmin
+    IdentityFile /home/ansible-ldap/.ssh/ansible_ldap
+    ProxyJump mumbai-bastion-m1
+
+Host mumbai-r2
+    HostName 10.10.10.9
+    User sysadmin
+    IdentityFile /home/ansible-ldap/.ssh/ansible_ldap
+    ProxyJump mumbai-bastion-m1
+
+Host mumbai-r3
+    HostName 10.10.10.10
+    User sysadmin
+    IdentityFile /home/ansible-ldap/.ssh/ansible_ldap
+    ProxyJump mumbai-bastion-m1
+
+Host mumbai-r4
+    HostName 10.10.10.11
+    User sysadmin
+    IdentityFile /home/ansible-ldap/.ssh/ansible_ldap
+    ProxyJump mumbai-bastion-m1
+
+# ============================
+# Mumbai HAProxy
+# ============================
+Host mumbai-haproxy
+    HostName 10.10.10.5
+    User sysadmin
+    ProxyJump mumbai-bastion-m1
+    IdentityFile ~/.ssh/id_rsa
